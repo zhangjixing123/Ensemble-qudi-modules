@@ -24,7 +24,6 @@ import numpy as np
 import ctypes
 import time
 import numpy as np
-from transitions import Machine
 import multiprocessing as mp
 from pyspcm import *
 from spcm_tools import *
@@ -33,6 +32,8 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.helpers import natural_sort
 from qudi.interface.finite_sampling_input_interface import FiniteSamplingInputInterface, FiniteSamplingInputConstraints
 
+
+#use spectrum card to acquire data
 class SpectrumFiniteSamplingInput(FiniteSamplingInputInterface):
     """
     Interface for input of data of a certain length atspectrum_finite_sampling_input:
@@ -60,5 +61,48 @@ class SpectrumFiniteSamplingInput(FiniteSamplingInputInterface):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
 
+    
+    def on_activate(self) -> None:
+        hCard = spcm_hOpen(create_string_buffer(b'/dev/spcm0'))
+        if not hCard:
+            sys.stdout.write("no card found...\n")
+            exit(1)
+
+    def on_deactivate(self) -> None:
+        spcm_vClose(hCard)
+        sys.stdout.write("card closed...\n")
+
+    @property
+    def constraints(self):
+        return FiniteSamplingInputConstraints(
+            sample_rate={'min': 0.1, 'max': 200, 'step': 0.1, 'unit': 'MHz'},
+            frame_size={'min': 1, 'max': 4096, 'step': 1, 'unit': 'samples'},
+            samples_in_buffer={'min': 0, 'max': 4096, 'step': 1, 'unit': 'samples'}
+        )
+    
+    @property
+    def active_channels(self):
+        return frozenset([f'channel_{self.channel}'])
+    
+    @property
+    def sample_rate(self):
+        return self.samplerate
+    
+    @property
+    def frame_size(self):
+        return self.lSegmentSize
+    
+    @property
+    def samples_in_buffer(self):
+        return self.qwToTransfer
+    
+    def configure(self, sample_rate, frame_size, samples_in_buffer):
+        self.samplerate = sample_rate
+        self.lSegmentSize = frame_size
+        self.qwToTransfer = samples_in_buffer
+        return self.samplerate, self.lSegmentSize, self.qwToTransfer   
+    
+    
+    
+    
