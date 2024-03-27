@@ -30,8 +30,8 @@ from pyspcm import *
 from spcm_tools import *
 
 from qudi.core.configoption import ConfigOption
-from qudi.util.helpers import in_range
-from qudi.interface.finite_sampling_input_interface import FiniteSamplingInputInterface
+from qudi.util.helpers import natural_sort
+from qudi.interface.finite_sampling_input_interface import FiniteSamplingInputInterface, FiniteSamplingInputConstraints
 
 class SpectrumFiniteSamplingInput(FiniteSamplingInputInterface):
     """
@@ -58,6 +58,7 @@ class SpectrumFiniteSamplingInput(FiniteSamplingInputInterface):
     input_range = ConfigOption(name='input_range', default=5000, missing="info")
 
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
 
