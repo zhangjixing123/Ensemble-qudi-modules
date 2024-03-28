@@ -32,3 +32,13 @@
 *.log
 *.log.*
 
+#ignore test.ipynb
+test.ipynb
+#ignore .ipynb_checkpoints
+.ipynb_checkpoints
+#ignore pyspcm.py
+pyspcm.py
+#ignore spcm_tools.py
+spcm_tools.py
+#ignore py_header
+py_header

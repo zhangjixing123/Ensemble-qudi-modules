@@ -52,7 +52,7 @@ class SpectrumFiniteSamplingInput(FiniteSamplingInputInterface):
     qwBufferSize = ConfigOption(name='buffer_size', default=4, missing="info")
     lSegmentSize = ConfigOption(name='segment_size', default=4096, missing="info")
     # NotifySize = int32(KILO_B(lSegmentSize / 1024 * 2)) # data with type int16
-    qwToTransfer = ConfigOption(name='samples_per_loop', default=512, missing="info")
+    qwToTransfer = ConfigOption(name='samples_per_loop', default=512, missing="info") #loop size
     samplerate = ConfigOption(name='sample_rate', default=20, missing="info")
     channel = ConfigOption(name='channel', default=1, missing="info")
     timeout = ConfigOption(name='timeout', default=5000, missing="info")
@@ -97,12 +97,16 @@ class SpectrumFiniteSamplingInput(FiniteSamplingInputInterface):
     def samples_in_buffer(self):
         return self.qwToTransfer
     
-    def configure(self, sample_rate, frame_size, samples_in_buffer):
-        self.samplerate = sample_rate
-        self.lSegmentSize = frame_size
-        self.qwToTransfer = samples_in_buffer
-        return self.samplerate, self.lSegmentSize, self.qwToTransfer   
     
+
+    def set_sample_rate(self, rate):
+        """
+        """
     
+    def set_active_channels(self, channels):
+        if channels != self.active_channels:
+            raise ValueError(f'Invalid channel(s) selected: {channels}')
+    
+
     
     
