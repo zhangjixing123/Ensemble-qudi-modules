@@ -130,7 +130,7 @@ class MicrowaveSmiq(MicrowaveInterface):
             power_limits=power_limits,
             frequency_limits=freq_limits,
             scan_size_limits=(2, 4000),
-            sample_rate_limits=(0.1, 100),  # FIXME: Look up the proper specs for sample rate
+            sample_rate_limits=(0.1, 200),  # FIXME: Look up the proper specs for sample rate
             scan_modes=(SamplingOutputMode.JUMP_LIST, SamplingOutputMode.EQUIDISTANT_SWEEP)
         )
 

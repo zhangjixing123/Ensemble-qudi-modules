@@ -36,7 +36,9 @@ class MicrowaveAnaPicoAPSin(MicrowaveInterface):
                                               timeout=self._comm_timeout)
         
         self._model = self._device.query('*IDN?').split(',')[1]
+        self._device.write('*RST\n')
         
+
         # Generate constraints
         if self._model == 'APSIN3000-HC':
             freq_limits = (9e3, 3.3e9)
@@ -143,9 +145,7 @@ class MicrowaveAnaPicoAPSin(MicrowaveInterface):
         @return float: The currently set scan sample rate in Hz
         """
         with self._thread_lock:
-            return Warning('NO sample rate available')
-
-
+            return Warning('No sample rate available')
 
     @property
     def scan_mode(self):
@@ -170,8 +170,8 @@ class MicrowaveAnaPicoAPSin(MicrowaveInterface):
             if self.module_state() != 'idle':
                 raise RuntimeError('Unable to set CW parameters. Microwave output active.')
             self._assert_cw_parameters_args(frequency, power)
-            self._command_wait(f':FREQ:FIX {frequency:e}')
-            self._command_wait(f':AMPL {power:f}')
+            self._command_wait(f':FREQ:FIX {frequency:f}\n')
+            self._command_wait(f':AMPL {power:f}\n')
 
     def configure_scan(self, power, frequencies, mode,sample_rate):
         """"Configure the Sweep microwave output. Does not start physical signal
@@ -217,7 +217,7 @@ class MicrowaveAnaPicoAPSin(MicrowaveInterface):
 
 
             self._device.write(':OUTP ON')
-            while int(float(self._device.query(':OUTP:STAT?'))) == 0:
+            while int(float(self._device.query(':OUTP:STAT?\n'))) == 0:
                 time.sleep(0.2)
             self.module_state.lock()
 
@@ -237,11 +237,11 @@ class MicrowaveAnaPicoAPSin(MicrowaveInterface):
             if self._scan_mode == SamplingOutputMode.JUMP_LIST:
                 if not self._in_list_mode():
                     self._write_list()
-                self._command_wait(':OUTP:STAT ON')
+                self._command_wait(':OUTP:STAT ON\n')
             elif self._scan_mode == SamplingOutputMode.EQUIDISTANT_SWEEP:
                 if not self._in_sweep_mode():
                     self._write_sweep()
-                self._command_wait(':OUTP:STAT ON')
+                self._command_wait(':OUTP:STAT ON\n')
             self.module_state.lock()
 
     def reset_scan(self):
@@ -253,8 +253,11 @@ class MicrowaveAnaPicoAPSin(MicrowaveInterface):
                 return
             if self._in_cw_mode():
                 raise RuntimeError('Can not reset frequency scan. CW microwave output active.')
-            #self._command_wait(':ABOR')
-            print('abort ommited')
+            if self._model == 'APSIN6010':
+                # this model has a problem with the Abor command, dont use it and just wait and pray
+                time.sleep(0.01)
+            else:
+                self._command_wait(':ABOR\n')
 
     def off(self):
         """Switches off any microwave output (both scan and CW).
@@ -265,7 +268,7 @@ class MicrowaveAnaPicoAPSin(MicrowaveInterface):
                 # Switch to CW mode to turn of scanning
                 mode = self._in_cw_mode()
                 if not mode:
-                    self._command_wait(':FREQ:MODE FIX')
+                    self._command_wait(':FREQ:MODE FIX\n')
                 self._device.write(':OUTP OFF')
                 time.sleep(1) # ":OUTP STAT?" returns empty for some reason... just hope after a waiting time the output is off
                 self.module_state.unlock()
@@ -278,20 +281,26 @@ class MicrowaveAnaPicoAPSin(MicrowaveInterface):
         """
         self._device.write(command_str)
         self._device.write('*WAI')
-        while int(float(self._device.query('*OPC?'))) != 1:
+        
+        if self._model == 'APSIN6010':
+            # this model has a problem with the OPC command.... wait manually
             time.sleep(0.2)
-
+        else:
+            while int(float(self._device.query('*OPC?\n'))) != 1:
+                time.sleep(0.2)
+            
 # -------------- Helpers ---------------------------------
 
     def _in_list_mode(self):
-        return self._device.query(':FREQ:MODE?').strip('\n').lower() == 'list'
+        return self._device.query(':FREQ:MODE?\n').strip('\n').lower() == 'list'
 
     def _in_sweep_mode(self):
-        return self._device.query(':FREQ:MODE?').strip('\n').lower() == 'swe'
+        return self._device.query(':FREQ:MODE?\n').strip('\n').lower() == 'swe'
+
 
     def _in_cw_mode(self):
         'Note: For this devices: FIX is equal to CW and usually returned'
-        return self._device.query(':FREQ:MODE?').strip('\n').lower() == 'fix'
+        return self._device.query(':FREQ:MODE?\n').strip('\n').lower() == 'fix'
     
     def _write_list(self):
         # Front panel only updates when in CW mode
@@ -315,25 +324,24 @@ class MicrowaveAnaPicoAPSin(MicrowaveInterface):
             self._command_wait(':FREQ:MODE SWE')
         if not self._in_cw_mode():
             self._command_wait(':FREQ:MODE FIX')
+        
 
         start, stop, points = self._scan_frequencies
 
         self._device.write(':SWE:SPAC LIN')
         self._device.write(f':FREQ:STAR {start:f}')
         self._device.write(f':FREQ:STOP {stop:f}')
-        self._device.write(f':SWE:POIN {points:f}')
+        test_point = points + 1
+        self._device.write(f':SWE:POIN {test_point:f}')
         
         self._device.write(f':POW {self._scan_power:f}')
 
+        self._command_wait(':SWE:DEL 0')
         self._command_wait(':TRIG:SOUR EXT')
-        if self._model == 'APSIN6010':
-            # This device uses internal trigger aswell even if set to ext 
-            dwel = 1/self._scan_sample_rate
-            self._command_wait(f':SWE:DWEL {dwel:f}') 
-        else:
-            self._command_wait(':SWE:DWEL 0.00005') # Set to minimal to not interfere with the trigger 
-        self._command_wait(':SWE:DEL 0') 
-        self._command_wait(':TRIG:TYPE NORM')
         self._command_wait(':TRIG:SLOP POS')
 
+        self._command_wait(':TRIG:TYPE POIN')
+
         self._command_wait(':FREQ:MODE SWE')
+        
+        
