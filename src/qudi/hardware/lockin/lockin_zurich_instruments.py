@@ -38,11 +38,24 @@ class LockinZurichInstrumentsHF2(LockinInterface):
     mw_source_smiq:
         module.Class: 'lockin.lockin_zurich_instruments.LockinZurichInstrumentsHF2'
         options:
-            address: 'localhost # optional
+            address: 'localhost' # optional
             device_name: 'DEVxxxx'
     """
     _address = ConfigOption('address',default='localhost')
     _device_name = ConfigOption('device_name',missing='error')
+    # Defining constrains in the config as they are not readable from the device
+    # TODO: Is this the way?:
+    _trigger_states = ConfigOption('trigger states', default={0:"Continuous",
+                        1:"DIO0 Rising", 2:"DIO0 falling", 3:"DIO0 both",
+                        4:"DIO1 rising",5:"DIO0|1 rising", 8:"DIO1 falling",
+                        10:"DIO0|1 falling", 12:"DIO1 both",15:"DIO0|1 both", 
+                        16:"DIO0 high", 32:"DIO0 low", 64:"DIO1 high",
+                        80:"DIO0|1 high", 128:"DIO1 low", 160:"DIO0|1 low"})
+    _output_ranges = ConfigOption('output ranges',default=[0.01,0.1,1,10])
+    _pll_adcChannels = ConfigOption('pll adc channels',default={0:"SigIn 1",
+                        1:"SigIn 2", 2:"AuxIn 1", 3:"AuxIn 2", 4:"DIO 0",
+                        5:"DIO 1"})
+    _input_range = ConfigOption('input_range',default=[0.001,2.0])
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -61,9 +74,17 @@ class LockinZurichInstrumentsHF2(LockinInterface):
         self._device = self._session.connect_device(self._device_name)
 
         # TODO: Find out constraints
-        self._demodsNum = len(self._device.demods()/12)-1 # find out maximum of demod channels; TODO: Better way
-        self._oscillatorNum = 1 # highest availabel oscillator number
-        self._constraints = LockinConstraints()
+        self._demodsNum = len(self._device.demods())/12 # Number of demod channels; TODO: Better way
+        self._oscNum = len(self._device.oscs()) # Number of oscillator channels
+        
+        self._constraints = LockinConstraints(
+            demodsNum=self._demodsNum,
+            oscNum=self._oscNum,
+            trigger_states=self._trigger_states,
+            output_ranges=self._output_ranges,
+            input_range = self._input_range,
+            pll_adcChannels=self._pll_adcChannels
+            )
 
     def on_deactivate(self):
         """ Cleanup performed during deactivation of the module. """
@@ -73,6 +94,7 @@ class LockinZurichInstrumentsHF2(LockinInterface):
         self._device = None
         
 # ---------------------- Outputs ------------------------------------------
+    #TODO: Implement all getters
     @property
     def constraints(self):
         """The LIA constraints object for this device.
@@ -83,18 +105,64 @@ class LockinZurichInstrumentsHF2(LockinInterface):
     
     @property
     def demod_status(self):
-        """The full status of every demod module.
+        """The full status of all demod modules in the form:
+       '/devXXXX/demods/0/adcselect': <value>,
+        '/devXXXX/demods/0/order': <value>, 
+        '/devXXXX/demods/0/timeconstant': <value>, 
+        '/devXXXX/demods/0/rate': <value>, 
+        '/devXXXX/demods/0/trigger': <value>, 
+        '/devXXXX/demods/0/enable': <value>, 
+        '/devXXXX/demods/0/oscselect': <value>, 
+        '/devXXXX/demods/0/harmonic': <value>, 
+        '/devXXXX/demods/0/freq': <value>, 
+        '/devXXXX/demods/0/phaseshift': <value>, 
+        '/devXXXX/demods/0/sinc': <value>, 
+        '/devXXXX/demods/0/sample': {'timestamp': array([<value>], 
+        dtype=uint64), 'x': array([<values>]), 'y': array([<value>]), 
+        'frequency': array([<value>]), 'phase': array([<value>]), 
+        'dio': array([<value>], dtype=uint32), 
+        'trigger': array([<value>], dtype=uint32), 'auxin0': array([<value>]), 
+        'auxin1': array([<value>]), 
+        'time': {'trigger': 0, 'dataloss': False, 'blockloss': False, 
+        'ratechange': False, 'invalidtimestamp': False, 'mindelta': 0}}, 
+        '....'
+
+        @return struct: Current status
         """
-        pass
+        with self._thread_lock:
+            return self._device.demods()
 
     @property
     def sigouts_status(self):
-        pass
+        """The full status of all output channels.
 
+        @return struct: Output status
+        """
+        with self._thread_lock:
+            return self._device.sigouts()
+        
+    @property
+    def sigins_status(self):
+        """The full status of all input channels.
+
+        @return struct: Input status
+        """
+        with self._thread_lock:
+            return self._device.sigins()
+        
+    @property
+    def pll_status(self):
+        """The full status of all pll channels.
+
+        @return struct: PLL status
+        """
+        with self._thread_lock:
+            return self._device.plls()
     
-    def get_demod_order(self,module):
-        return self._device.demods[module].order()
+
+ # ------ Demod -------------
     
+    @property
     def get_demod_bandwidth(self,module):
         """The bandwidth of the low-pass filter for the specified module. 
         Must implement setter as well.
@@ -104,13 +172,78 @@ class LockinZurichInstrumentsHF2(LockinInterface):
         https://docs.zhinst.com/mfli_user_manual/signal_processing_basics.html
         
         @param int module: module of the LIA
-        @return double bandwidth: Current bandwidth of the module in Hz
+        @return float bandwidth: Current bandwidth of the module in Hz
         """
-        tc = self._device.demods[module].timeconstant()
-        order = self.get_demod_order(module)
-        scaling_factor = bwtc_scaling_factor(order)
-        return scaling_factor/(np.pi*tc)
+        with self._thread_lock:
+            tc = self._device.demods[module].timeconstant()
+            order = self.get_demod_order(module)
+            scaling_factor = bwtc_scaling_factor(order)
+            return scaling_factor/(np.pi*tc)
 
+    @property
+    def get_demod_enable(self,module):
+        with self._thread_lock:
+            return self._device.demods[module].enable()
+    
+    @property
+    def get_demod_harmonic(self,module):
+        with self._thread_lock:
+            return self._device.demods[module].harmonic()
+    
+    @property
+    def get_demod_order(self,module):
+        with self._thread_lock:
+            return self._device.demods[module].order()
+    
+    @property
+    def get_demod_osc(self,module):
+        with self._thread_lock:
+            return self._device.demods[module].oscselect()
+        
+    @property
+    def get_demod_phase(self,module):
+        with self._thread_lock:
+            return self._device.demods[module].phaseshift()
+        
+    @property
+    def get_demod_rate(self,module):
+        with self._thread_lock:
+            return self._device.demods[module].rate()
+
+    @property
+    def get_demod_sinc(self,module):
+        with self._thread_lock:
+            return self._device.demods[module].sinc()
+        
+    @property
+    def get_demod_trigger(self,module):
+        with self._thread_lock:
+            return self._device.demods[module].trigger()
+
+
+# ------ Sig Output --------
+    
+    @property
+    def get_sigout_enable(self,channel):
+        with self._thread_lock:
+            return self._device.sigouts[channel].on()
+        
+    @property
+    def get_sigout_add(self,channel):
+        with self._thread_lock:
+            return self._device.sigouts[channel].add()
+        
+    @property
+    def get_sigout_ampEnable(self,channel):
+        with self._thread_lock:
+            return self._device.sigouts[channel].enable()
+        
+    @property
+    def get_sigout_offset(self,channel):
+        with self._thread_lock:
+            return self._device.sigouts[channel].offset()
+    
+    @property
     def get_sigout_range(self,channel):
         """The range of the specified output channel
         Must implement setter as well.
@@ -120,17 +253,54 @@ class LockinZurichInstrumentsHF2(LockinInterface):
         @param int channel: channel of the LIA
         @return int range: range of the output in V
         """
-        range = self._device.sigouts[channel].range()
-        if range == 0:
-            Warning('Range set to "0.1" or "0.01". Cannot differentiate. Set arbitrary to 0.1V')
-            range = 0.1
-        return range
+        with self._thread_lock:
+            range = self._device.sigouts[channel].range()
+            if range == 0:
+                Warning('Range set to "0.1" or "0.01". Cannot differentiate. Set arbitrarily to 0.1V')
+                range = 0.1
+            return range
+        
+
+# ------ Sig Input ---------
+
+    @property
+    def get_sigin_ac(self,channel):
+        with self._thread_lock:
+            return self._device.sigins[channel].ac()
+    
+    @property
+    def get_sigin_diff(self,channel):
+        with self._thread_lock:
+            return self._device.sigins[channel].diff()
+        
+    @property
+    def get_sigin_impedance(self,channel):
+        with self._thread_lock:
+            return self._device.sigins[channel].imp50()
+        
+    @property
+    def get_sigin_range(self,channel):
+        with self._thread_lock:
+            return self._device.sigins[channel].range()
+
+# ------ PLLs --------------
+
+    @property
+    def get_pll_adcselect(self,channel):
+        with self._thread_lock:
+            return self._device.plls[channel].adcselect()
+    
+    @property
+    def get_pll_enable(self,channel):
+        with self._thread_lock:
+            return self._device.plls[channel].enable()
+
 
 # -------------------- Inputs --------------------------------------
 
 # ------ Demod -------------
     def set_demod_enable(self,module):
-        """Enable the specified module to allow for data collection
+        """Enables the specified module to allow for data collection
         
         Must return AFTER the output is actually active.
         @param int module: module of the LIA
@@ -139,7 +309,7 @@ class LockinZurichInstrumentsHF2(LockinInterface):
             self._device.demods[module].enable(1) 
 
     def set_demod_disable(self,module):
-        """Disable the specified module
+        """Disables the specified module
 
         @param int module: module of the LIA
         """
@@ -153,7 +323,7 @@ class LockinZurichInstrumentsHF2(LockinInterface):
         order of the low-pass filter
 
         @param int module: module of the LIA
-        @param double bw: bandwidth of the filter
+        @param float bw: bandwidth of the filter
         """
         with self._thread_lock:
             order = self.get_demod_order(module)
@@ -168,7 +338,7 @@ class LockinZurichInstrumentsHF2(LockinInterface):
         @param int harmonic: harmonic order
         """
         with self._thread_lock:
-            self._device.demods[module].harmonic[harmonic]
+            self._device.demods[module].harmonic(harmonic)
 
     def set_demod_order(self,module,order=4):
         """Set the order of the low pass filter
@@ -200,7 +370,7 @@ class LockinZurichInstrumentsHF2(LockinInterface):
         """Set the phaseshift of the specified module
         
         @param int module: module of the LIA
-        @param double phase: phase shift in deg
+        @param float phase: phase shift in deg
         """
         with self._thread_lock:
             self._device.demods[module].phaseshift(phase)
@@ -210,7 +380,7 @@ class LockinZurichInstrumentsHF2(LockinInterface):
         
         Note: The actual data rate might differ slightly
         @param int module: module of the LIA
-        @param double rate: data rate in Samples/s --> (Hz)
+        @param float rate: data rate in Samples/s --> (Hz)
         """
         with self._thread_lock:
             self._device.demods[module].rate(rate)
@@ -233,16 +403,24 @@ class LockinZurichInstrumentsHF2(LockinInterface):
         0 --> "Continuous"
         1 --> "b0": DIO0 rising edge
         2 --> "b1": DIO0 falling edge
+        3 --> "3": DIO0 both edges
         4 --> "b2": DIO1 rising edge
+        5 --> "5": DIO0|1 rising edge
         8 --> "b3": DIO1 falling edge
+        10 --> "10": DIO0|1 falling edge
+        12 --> "12": DIO1 both edges
+        15 --> "15": DIO0|1 both edges
         16 --> "b4": DIO0 high
         32 --> "b5": DIO0 low
         64 --> "b6": DIO1 high
+        80 --> "80": DIO0|1 high
         128 --> "b7": DIO1 low
-
+        160 --> "160": DIO0|1 low
+        
         @param int module: module of the LIA
         @param int bit: bit decoded trigger channel
         """
+        #TODO: decide how to call the function and parse the trigger state
         with self._thread_lock:
             self._device.demods[module].trigger(bit)
     
@@ -265,7 +443,7 @@ class LockinZurichInstrumentsHF2(LockinInterface):
             self._device.sigouts[channel].on(0)
 
     def set_sigout_add(self,channel,status):
-        """"Enables and disables if an external output is added to the signal
+        """"Enables and disables if an external input is added to the signal
         
         @param int channel: output channel of the LIA
         @param bool status: enable/disable the adding of a signal
@@ -292,7 +470,7 @@ class LockinZurichInstrumentsHF2(LockinInterface):
         The offset is transmitted as a gain value: offset/range
         
         @param int channel: output channel of the LIA
-        @param double offset: Offset in V
+        @param float offset: Offset in V
         """
         with self._thread_lock:
             current_range = self.get_sigout_range(channel) 
@@ -303,10 +481,10 @@ class LockinZurichInstrumentsHF2(LockinInterface):
         """Set the range of the specified signal output.
         
         Technical note: In the documentary the range is set as int however it is
-        still possible to set a value of 0.01V and 0.1V.
+        still possible to set a value of 0.01V and 0.1V correctly.
 
         @param int channel: output channel of the LIA
-        @param double range: output range of the signal in V
+        @param float range: output range of the signal in V
         """
         with self._thread_lock:
             self._device.sigouts[channel].range(range)
@@ -349,7 +527,7 @@ class LockinZurichInstrumentsHF2(LockinInterface):
         """Set the voltage range of the specified signal input channel
         
         @param int channel: input channel of the LIA
-        @param double range: voltage range in V
+        @param float range: voltage range in V
         """
         with self._thread_lock:
             self._device.sigins[channel].range(range)
@@ -373,7 +551,7 @@ class LockinZurichInstrumentsHF2(LockinInterface):
 
     def set_pll_enable(self,channel,status):
         """Enables and disables the specified PLL channel.
-         In reality this refers if to the used reference oscillator mode. An 
+         In reality this refers to the used reference oscillator mode. An 
          enabled PLL uses the external reference (ExtRef), a disabled PLL the 
          manual set internal reference (Man)
          

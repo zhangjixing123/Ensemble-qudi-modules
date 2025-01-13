@@ -37,7 +37,10 @@ class MicrowaveAnaPicoAPSin(MicrowaveInterface):
         
         self._model = self._device.query('*IDN?').split(',')[1]
         self._device.write('*RST\n')
-        
+
+        if self._model == 'APSIN4010':
+            print('workaround initiated')
+            self._model == 'APSIN6010' # NOTE: quick workaround to prevent whole reprogramming for now
 
         # Generate constraints
         if self._model == 'APSIN3000-HC':
@@ -256,6 +259,9 @@ class MicrowaveAnaPicoAPSin(MicrowaveInterface):
             if self._model == 'APSIN6010':
                 # this model has a problem with the Abor command, dont use it and just wait and pray
                 time.sleep(0.01)
+            if self._model == 'APSIN4010':
+                # this model has a problem with the Abor command, dont use it and just wait and pray
+                time.sleep(0.01)    
             else:
                 self._command_wait(':ABOR\n')
 
@@ -284,6 +290,8 @@ class MicrowaveAnaPicoAPSin(MicrowaveInterface):
         
         if self._model == 'APSIN6010':
             # this model has a problem with the OPC command.... wait manually
+            time.sleep(0.2)
+        if self._model == 'APSIN4010':
             time.sleep(0.2)
         else:
             while int(float(self._device.query('*OPC?\n'))) != 1:
