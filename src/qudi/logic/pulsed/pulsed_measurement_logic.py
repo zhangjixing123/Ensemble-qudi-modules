@@ -921,6 +921,8 @@ class PulsedMeasurementLogic(LogicBase):
                 # start fast counter
                 self.fast_counter_on()
                 # start pulse generator
+                # time.sleep(0.1)
+                #Jixing add, make sure no trigger is missed at beginning.
                 self.pulse_generator_on()
 
                 # initialize analysis_timer
@@ -1027,6 +1029,7 @@ class PulsedMeasurementLogic(LogicBase):
                 if self.__use_ext_microwave:
                     self.microwave_on()
                 self.fast_counter_continue()
+                time.sleep(1)
                 self.pulse_generator_on()
 
                 # un-pausing the timer
@@ -1268,12 +1271,27 @@ class PulsedMeasurementLogic(LogicBase):
         # Get counter raw data (including recalled raw data from previous measurement)
         fc_data, info_dict = self._get_raw_data()
         self.raw_data = fc_data
+
+        # spamreader = pd.read_csv('C:\\Users\\yy3\\Desktop\\rawData.csv')
+        # self.raw_data = np.array(spamreader.iloc[:,1])
+        
         self.__elapsed_sweeps = info_dict['elapsed_sweeps']
         self.__elapsed_time = info_dict['elapsed_time']
 
         # extract laser pulses from raw data
-        return_dict = self._pulseextractor.extract_laser_pulses(self.raw_data)
-        self.laser_data = return_dict['laser_counts_arr']
+        # '''
+        # ---------------------original----------------------------
+        # return_dict = self._pulseextractor.extract_laser_pulses(self.raw_data)
+        # self.laser_data = return_dict['laser_counts_arr']
+        # ---------------------------------------------------------
+        # '''
+        # new for nidaq
+        self.laser_data = self.raw_data
+        # print(self._fastcounter.num_pusles, self._fastcounter.num_samples)
+        # self.laser_data = self.raw_data.reshape(10,30)
+        # print('raw data:', self.raw_data, len(self.raw_data))
+        # print('laser_data:', self.laser_data)
+
         return
 
     def _analyze_laser_pulses(self):

@@ -34,7 +34,7 @@ from qudi.core.connector import Connector
 from qudi.util.mutex import RecursiveMutex, Mutex
 from qudi.util.enums import SamplingOutputMode
 from qudi.util.helpers import in_range
-from piezo_motor import piezo_stage
+
 
 
 ###################################################################################################
@@ -87,8 +87,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     # TODO Bool indicators deprecated; Change in scanning probe toolchain
 
     _ni_finite_sampling_io = Connector(name='scan_hardware', interface='FiniteSamplingIOInterface')
-    _kim101_piezo = Connector(name='piezo_motor', interface='piezo_stage')
-    _ni_ao = Connector(name='analog_output', interface='ProcessSetpointInterface')
+    _kim101_piezo = Connector(name='analog_output', interface='ProcessSetpointInterface')
+    #_ni_ao = Connector(name='analog_output', interface='ProcessSetpointInterface')
 
     _controller_channels = ConfigOption(name='controller_channels', missing='error')
     _ni_channel_mapping = ConfigOption(name='ni_channel_mapping', missing='error')

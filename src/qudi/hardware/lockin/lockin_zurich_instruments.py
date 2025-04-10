@@ -28,6 +28,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.interface.lockin_interface import LockinInterface, LockinConstraints
 from qudi.util.enums import SamplingOutputMode
 
+# TODO implement data aqiusition
 
 class LockinZurichInstrumentsHF2(LockinInterface):
     """ This is the Interface class to define the controls for the HF2LI
