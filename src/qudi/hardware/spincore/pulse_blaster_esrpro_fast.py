@@ -1974,7 +1974,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         pb_sequence_list = list()
 
         t_start = time.time()
-        print(num_entries, flush=True)
+        # print(num_entries, flush=True)
         for index in range(num_entries):
 
             # create at first a temporary array, with the minimal granularity

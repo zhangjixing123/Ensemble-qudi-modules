@@ -75,7 +75,7 @@ class SequenceGeneratorLogic(LogicBase):
 
     _write_block_directly = ConfigOption(
         name='write_block_directly',
-        default=False,
+        default=True,
     )
 
     # configuration options
@@ -1894,7 +1894,7 @@ class SequenceGeneratorLogic(LogicBase):
                                 offset_bin += samples_to_add
 
                             # Check if the temporary sample array is full and write to the device if so.
-                            print(array_write_index, array_length)
+                            # print(array_write_index, array_length)
                             if array_write_index == array_length:
                                 # Set first/last chunk flags
                                 is_first_chunk = array_write_index == processed_samples
@@ -1908,7 +1908,7 @@ class SequenceGeneratorLogic(LogicBase):
                                         is_first_chunk=is_first_chunk,
                                         is_last_chunk=is_last_chunk,
                                         total_number_of_samples=ensemble_info['number_of_samples'])
-                                    print(written_samples, wfm_list)
+                                    # print(written_samples, wfm_list)
                                 # Update written waveforms set
                                 written_waveforms.update(wfm_list)
 
