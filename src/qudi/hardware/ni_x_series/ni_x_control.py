@@ -37,12 +37,11 @@ class NI_State_Trans(object):
         # self._enable_debug = enable_debug
         self._enable_debug = True
         self.config_counter = 0
-        self.power_state = 0 # use to show whether current sys is on or off
 
 
     def INIT_begin(self):
         if self._enable_debug:  
-            print('>> ni_x_control >> NI_State_Trans >> INIT_begin :: start')
+            print('start initializing')
         self.pipe1.send(1) # ready
         parameters = self.pipe1.recv()
         if self._enable_debug:  
@@ -53,6 +52,7 @@ class NI_State_Trans(object):
         self.clk_terminal = parameters[1]
         self._sample_rate = parameters[2]
         self._frame_size = parameters[3]
+        # self._frame_size = parameters[4]
         self._frame_num = parameters[4]
         self._physical_sample_clock_output = parameters[5]
         self.sampleMode_clk = cst.AcquisitionType.FINITE
@@ -87,143 +87,6 @@ class NI_State_Trans(object):
         # do a simple standard setup
 
         # 0. reset device
-        self.device_soft_start()
-        self.power_state = 1 # sys on
-
-        self.pipe1.send(0) # finished
-        if self._enable_debug:  
-            print('>> ni_x_control >> NI_State_Trans >> INIT_begin :: end')
-
-
-    def SS_begin(self):
-        if self._enable_debug: 
-            print('>> ni_x_control >> NI_State_Trans >> SS_begin :: start')
-
-        # try restart device
-        try:
-            if not self.power_state:
-                self.device_soft_start()
-                self.power_state = 1
-        except:
-            print('fail to restart sys in SS_begin :: self.device_soft_start()')
-
-        # start everything
-        try:
-            self.ai.start()
-        except ni.DaqError:
-            print('schief gehen bei Starten von ai task')
-
-        try:
-            self.clk.start()
-            self.stop_symbol = 0
-        except ni.DaqError:
-            print('schief gehen bei Starten von clk task')
-
-        # get buffered samples
-        while not self.stop_symbol and self._state.value:
-
-            if self._state.value == 0:
-                self.stop_symbol = 1
-            store_data = np.array([[]])
-
-            # methode 1: hardware gated--------- ------------------------
-            data_buffer = np.zeros(self._frame_size)
-            if self._enable_debug:
-                print('>>> ready to get data')
-            for cur_frame in range(self._frame_num):
-                # if self._enable_debug:
-                #     print('current frame number is:', cur_frame, '; max frame num is:', self._frame_num)
-                try:                 
-                    read_samples = self.ai_reader.read_many_sample(
-                        data_buffer,
-                        number_of_samples_per_channel=self._frame_size,
-                        timeout=self._rw_timeout)
-                    # if self._enable_debug:
-                    #     print('cur data: \n',data_buffer)
-                    if store_data.size == 0:
-                        store_data = np.array([data_buffer])
-                    else:
-                        store_data = np.append(store_data, [data_buffer], axis=0)
-
-                except ni.DaqError:
-                    temp = 0
-                    # print('Getting samples from streamer failed.')
-
-            # methode 2: not gated, software gated ------------------------
-            # data_buffer = np.zeros(self._frame_size * self._frame_num)
-            # try:                 
-            #     read_samples = self.ai_reader.read_many_sample(
-            #         data_buffer,
-            #         number_of_samples_per_channel=self._frame_size*self._frame_num,
-            #         timeout=self._rw_timeout)
-            #     store_data = np.array([data_buffer]).reshape(self._frame_num,self._frame_size)
-
-
-            # except ni.DaqError:
-            #     print('Getting samples from streamer failed.')
-            
-
-
-                        
-            if self._state.value == 2:
-                print('Reset sweep count from %d to 0' % self.sweep)
-                self.sweep = 0
-                self._state.value = 1
-            self.sweep += 1
-            if self._enable_debug: 
-                print('sended sweep is :', self.sweep)
-            self.pipe2.send(store_data)
-            self.pipe2.send(self.sweep) 
-        # self.pipe2.send(None)
-        if self._enable_debug: 
-            print('>> ni_x_control >> NI_State_Trans >> SS_begin :: end')
-
-
-    def SS_stop(self):
-        if self._enable_debug: 
-            print('>> ni_x_control >> NI_State_Trans >> SS_stop :: start')
-        # send stop command
-        try:
-            self.ai.stop()
-            self.ai.close()
-            if self._enable_debug:
-                    print('sucessfully stop ai task')
-        except ni.DaqError:
-            print('Error while trying to terminate ai task.')
-        try:
-            self.clk.stop()
-            self.clk.close()
-            if self._enable_debug:
-                print('sucessfully stop clk task')
-        except ni.DaqError:
-            print('Error while trying to terminate clk task.')
-        self.power_state = 0 # sys OFF
-        self.sweep = 0
-        if self._enable_debug: 
-            print('>> ni_x_control >> NI_State_Trans >> SS_stop :: end')
-
-    def process_exit(self):
-        if self._enable_debug: 
-            print('>> ni_x_control >> NI_State_Trans >> process_exit :: start')
-        try:
-            self.ai.stop()
-            self.ai.close()
-        except ni.DaqError:
-            print('Error while trying to terminate ai task.')
-        
-        try:
-            self.clk.stop()
-            self.clk.close()
-        except ni.DaqError:
-            print('Error while trying to terminate clk task.')
-        self.power_state = 0 # sys OFF
-        if self._enable_debug: 
-            print('>> ni_x_control >> NI_State_Trans >> process_exit :: end')
-    
-
-    def device_soft_start(self):
-        if self._enable_debug:
-            print('>> ni_x_control >> NI_State_Trans >> device_soft_start :: start')
         try:
             self.ai.stop()
             self.ai.close()
@@ -269,12 +132,12 @@ class NI_State_Trans(object):
         # 2. configerate the analog channel
         # if not self.config_counter:
         self.ai = ni.Task()
-        if isinstance(self._adc_voltage_range, str):
-            self._adc_voltage_range = eval(self._adc_voltage_range)
+        self._adc_voltage_range = eval(self._adc_voltage_range)
         self.ai.ai_channels.add_ai_voltage_chan('/{0}/{1}'.format(self._device_name, self.analog_channels),
                                             terminal_config=self.diffTerminal,
                                             max_val=max(self._adc_voltage_range),
                                             min_val=min(self._adc_voltage_range))
+        # self.ai.ai_channels.ai_impedance = cst.Impedance1.ONE_M_OHM
         self.ai.ai_channels.ai_impedance = cst.Impedance1.FIFTY_OHMS
         self.ai.timing.cfg_samp_clk_timing(self._sample_rate,
                                             source='/{0}/{1}'.format(self._device_name, 
@@ -293,8 +156,126 @@ class NI_State_Trans(object):
         except ni.DaqError:
             print('schief gehen bei Configuration des ai_readers')
 
-        if self._enable_debug:
-            print('>> ni_x_control >> NI_State_Trans >> device_soft_start :: end')
+        self.pipe1.send(0) # finished
+        if self._enable_debug:  
+            print('Initialization finished')
+
+
+    def SS_begin(self):
+        if self._enable_debug: 
+            print('start sampling')
+
+        # start everything
+        try:
+            self.ai.start()
+        except ni.DaqError:
+            print('schief gehen bei Starten von ai task')
+
+        try:
+            self.clk.start()
+            self.stop_symbol = 0
+        except ni.DaqError:
+            print('schief gehen bei Starten von clk task')
+
+        # get buffered samples
+        while not self.stop_symbol and self._state.value:
+
+            if self._state.value == 0:
+                self.stop_symbol = 1
+            store_data = np.array([[]])
+
+            # methode 1: hardware gated--------- ------------------------
+            data_buffer = np.zeros(self._frame_size)
+            if self._enable_debug:
+                print('>>> ready to get data')
+            for cur_frame in range(self._frame_num):
+                # if self._enable_debug:
+                #     print('current frame number is:', cur_frame, '; max frame num is:', self._frame_num)
+                try:                 
+                    read_samples = self.ai_reader.read_many_sample(
+                        data_buffer,
+                        number_of_samples_per_channel=self._frame_size,
+                        timeout=self._rw_timeout)
+                    # if self._enable_debug:
+                    #     print('cur data: \n',data_buffer)
+                    if store_data.size == 0:
+                        store_data = np.array([data_buffer])
+                    else:
+                        store_data = np.append(store_data, [data_buffer], axis=0)
+
+                except ni.DaqError:
+                    print('Getting samples from streamer failed.')
+
+            # methode 2: not gated, software gated ------------------------
+            # data_buffer = np.zeros(self._frame_size * self._frame_num)
+            # try:                 
+            #     read_samples = self.ai_reader.read_many_sample(
+            #         data_buffer,
+            #         number_of_samples_per_channel=self._frame_size*self._frame_num,
+            #         timeout=self._rw_timeout)
+            #     store_data = np.array([data_buffer]).reshape(self._frame_num,self._frame_size)
+
+
+            # except ni.DaqError:
+            #     print('Getting samples from streamer failed.')
+            
+
+
+                        
+            if self._state.value == 2:
+                print('Reset sweep count from %d to 0' % self.sweep)
+                self.sweep = 0
+                self._state.value = 1
+            self.sweep += 1
+            if self._enable_debug: 
+                print('sended sweep is :', self.sweep)
+            self.pipe2.send(store_data)
+            self.pipe2.send(self.sweep) 
+        self.pipe2.send(None)
+        if self._enable_debug: 
+            print('sampling finished!')
+
+
+    def SS_stop(self):
+        if self._enable_debug: 
+            print('stop sampling')
+        # send stop command
+        try:
+            self.ai.stop()
+            # self.ai.close()
+            if self._enable_debug:
+                    print('sucessfully close ai task')
+        except ni.DaqError:
+            print('Error while trying to terminate ai task.')
+        try:
+            self.clk.stop()
+            # self.clk.close()
+            if self._enable_debug:
+                print('sucessfully close clk task')
+        except ni.DaqError:
+            print('Error while trying to terminate clk task.')
+        
+        self.sweep = 0
+        if self._enable_debug: 
+            print("Stop/Pause.... \n")
+
+    def process_exit(self):
+        if self._enable_debug: 
+            print('stop processing')
+        try:
+            self.ai.stop()
+            self.ai.close()
+        except ni.DaqError:
+            print('Error while trying to terminate ai task.')
+        
+        try:
+            self.clk.stop()
+            self.clk.close()
+        except ni.DaqError:
+            print('Error while trying to terminate clk task.')
+
+        if self._enable_debug: 
+            print("Exit...\n")
     
 
 
@@ -308,7 +289,7 @@ def average_func(pipe2, pipe3, cmd, Vmax=5000):
     #   -1: exit
 
     # scale = Vmax / 32768    # gated (change unit * 5000mv / int16's max value 32768)
-    scale = 1e8 # 4位精度
+    scale = 1e4 # 4位精度
     while True:
         store_data = np.array([[]])
         minus = 0
@@ -330,7 +311,7 @@ def average_func(pipe2, pipe3, cmd, Vmax=5000):
                     minus = 1
             if cmd.value == 3:
                 if len(cur_data) == len(store_data):
-                    pipe3.send((cur_data*scale).astype('int32'))
+                    pipe3.send((cur_data).astype('int32'))
                     pipe3.send(1)
                     cmd.value = 1
 

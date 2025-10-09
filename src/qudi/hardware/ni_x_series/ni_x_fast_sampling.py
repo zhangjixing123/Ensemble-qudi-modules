@@ -124,7 +124,7 @@ class NIXSeriesFastSampling(FastCounterInterface):
         """Starts up the NI-card and performs sanity checks. 
         """
         if self._enable_debug: 
-            print('>> NIXSeriesFastSampling >> on activate')
+            print('on activate')
         self._number_of_gates = int(100)
         self._bin_width = 1
         self._record_length = int(4000)
@@ -165,7 +165,7 @@ class NIXSeriesFastSampling(FastCounterInterface):
         ALL THE PRESENT KEYS OF THE CONSTRAINTS DICT MUST BE ASSIGNED!
         """
         if self._enable_debug:  
-            print('>> NIXSeriesFastSampling >> get_constraints')
+            print('get_constraints')
         constraints = dict()
         constraints['hardware_binwidth_list'] = [1/1e3, 1/100e3, 1/20e3, 1/200e3, 1/245e3,1/250e3]
         return constraints
@@ -174,7 +174,7 @@ class NIXSeriesFastSampling(FastCounterInterface):
         """ Shut down the NI card.
         """
         if self._enable_debug:  
-            print('>> NIXSeriesFastSampling >> on_deactivate')
+            print('on_deactivate')
         self.stop_measure()
         self.state_3.value = -1
         self.controler_pipe1.send('deactive')
@@ -200,7 +200,7 @@ class NIXSeriesFastSampling(FastCounterInterface):
                     number_of_gates: the number of gated, which are accepted
         """
         if self._enable_debug:  
-            print('>> NIXSeriesFastSampling >> configure')
+            print('configure')
         if self._enable_debug:  
             print('number of gates:',number_of_gates)
         # self._number_of_gates = number_of_gates
@@ -242,19 +242,19 @@ class NIXSeriesFastSampling(FastCounterInterface):
                                             self._rw_timeout,
                                             self.external_sample_clock_source])) # send parameters
             if self._enable_debug:  
-                print('>> NIXSeriesFastSampling >> not ready for config ') # not ready
+                print('not ready for config ') # not ready
         if self.controler_pipe1.recv() == 0: # finished
             if self._enable_debug:  
-                print('>> NIXSeriesFastSampling >> config finished')
+                print('config finished')
         else:
             if self._enable_debug:  
-                print('>> NIXSeriesFastSampling >> config failed')
+                print('config failed')
 
         return self._bin_width, self._record_length, self._number_of_gates
 
     def start_measure(self):
         """ Start the fast counter. """
-        print('>> NIXSeriesFastSampling >> start_measure')
+        print('start_measure')
         self.module_state.lock()
         self.state_1.value, self.state_3.value = 1, 1
         self.controler_pipe1.send('start')
@@ -266,7 +266,7 @@ class NIXSeriesFastSampling(FastCounterInterface):
         """ Stop the fast counter. """
         if self.module_state() == 'locked':
             if self._enable_debug:  
-                print('>> NIXSeriesFastSampling >> stop_measure')
+                print('stop_measure')
             self.state_1.value, self.state_3.value = 0, 0
             time.sleep(0.5) # wait for stop
             self.controler_pipe1.send('stop')
@@ -280,7 +280,7 @@ class NIXSeriesFastSampling(FastCounterInterface):
         Fast counter must be initially in the run state to make it pause.
         """
         if self._enable_debug:  
-            print('>> NIXSeriesFastSampling >> pause_measure')
+            print('pause_measure')
         if self.module_state() == 'locked':
             self.stop_measure()
             self.statusvar = 3
@@ -292,7 +292,7 @@ class NIXSeriesFastSampling(FastCounterInterface):
         If fast counter is in pause state, then fast counter will be continued.
         """
         if self._enable_debug:  
-            print('>> NIXSeriesFastSampling >> continue_measure')
+            print('continue_measure')
         if self.module_state() == 'locked':
             self.start_measure()
             time.sleep(1)
@@ -323,7 +323,7 @@ class NIXSeriesFastSampling(FastCounterInterface):
         bins must be caught here and taken care of.
         """
         if self._enable_debug:  
-            print('>> NIXSeriesFastSampling >> get_data_trace')
+            print('get_data_trace')
         self.state_3.value = 2 if accumulate else 3
 
         if timeout:
@@ -369,7 +369,7 @@ class NIXSeriesFastSampling(FastCounterInterface):
     def get_binwidth(self):
         """ Returns the width of a single timebin in the timetrace in seconds. """
         if self._enable_debug:  
-            print('>> NIXSeriesFastSampling >> get_binwidth')
+            print('get_binwidth')
         width_in_seconds = self._bin_width 
         return width_in_seconds
 
