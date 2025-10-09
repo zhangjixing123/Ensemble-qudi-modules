@@ -52,6 +52,7 @@ class NI_State_Trans(object):
         self.clk_terminal = parameters[1]
         self._sample_rate = parameters[2]
         self._frame_size = parameters[3]
+        # self._frame_size = parameters[4]
         self._frame_num = parameters[4]
         self._physical_sample_clock_output = parameters[5]
         self.sampleMode_clk = cst.AcquisitionType.FINITE
@@ -287,7 +288,7 @@ def average_func(pipe2, pipe3, cmd, Vmax=5000):
     #   -1: exit
 
     # scale = Vmax / 32768    # gated (change unit * 5000mv / int16's max value 32768)
-    scale = 1e4 # 4位精度
+    scale = 1e5 # 4位精度
     while True:
         store_data = np.array([[]])
         minus = 0

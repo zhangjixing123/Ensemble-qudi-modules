@@ -4,8 +4,11 @@ from PySide2 import QtCore, QtWidgets
 from qudi.core.connector import Connector
 from qudi.core.module import GuiBase
 
-from src.qudi.gui.lockin.lockin_main_window import LockinMainWindow
-from src.qudi.gui.lockin.lockin_settings_dockwidget import LockinSettingsDockWidget
+# from src.qudi.gui.lockin.lockin_main_window import LockinMainWindow
+# from src.qudi.gui.lockin.lockin_settings_dockwidget import LockinSettingsDockWidget
+
+from qudi.gui.lockin.lockin_main_window import LockinMainWindow
+from qudi.gui.lockin.lockin_settings_dockwidget import LockinSettingsDockWidget
 
 class LockinGui(GuiBase):
     """
@@ -40,7 +43,7 @@ class LockinGui(GuiBase):
     def on_activate(self):
         # Create main window 
         logic = self._lockin_logic()
-        data_constraints = logic.data_constraints # TODO: Needed?
+        # data_constraints = logic.data_constraints # TODO: Needed?
         lockin_constraints = logic.lockin_constraints
         self._mw = LockinMainWindow()
         self._plot_widget = self._mw.centralWidget()
@@ -86,6 +89,11 @@ class LockinGui(GuiBase):
     def __connect_lockin_settings_signals(self): #TODO: Whats wrong here?
         logic = self._lockin_logic()
         self._settings_dockwidget.sigACChanged.connect(logic.set_)
+
+    def __connect_logic_signals(self):
+        logic = self._lockin_logic()
+        logic.sigParamsUpdated.connect(self._update_parameters, QtCore.Qt.QueuedConnection)
+        # logic.sigDataUpdated.connect(self. , QtCore.Qt.QueuedConnection) #TODO: Find what this needs to call and do
 
     def __disconnect_main_window_actions(self): 
         self._mw.action_toggle_measurement.triggered[bool].disconnect()
