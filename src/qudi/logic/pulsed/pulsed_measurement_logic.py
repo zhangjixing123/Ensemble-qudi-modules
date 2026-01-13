@@ -304,12 +304,31 @@ class PulsedMeasurementLogic(LogicBase):
     def on_deactivate(self):
         """ Deactivate the module properly.
         """
+        # TODO
+        self._fastcounter().on_deactivate()
+
         if self.module_state() == 'locked':
             self.stop_pulsed_measurement()
         self.__analysis_timer.timeout.disconnect()
         self.sigStartTimer.disconnect()
         self.sigStopTimer.disconnect()
         return
+
+    def gui_request_deactivate(self):
+        """ Call deactivate function directly in GUI
+        """
+        print('Call Func: gui_request_deactivate')
+        try:
+            self.stop_pulsed_measurement()
+            print('[FUNC CALLING]: self.stop_pulsed_measurement()')
+        except:
+            pass
+        try:
+            self.on_deactivate()
+            print('[FUNC CALLING]: self.on_deactivate()')
+        except:
+            pass
+
 
     @extraction_parameters.representer
     def __repr_extraction_parameters(self, value):

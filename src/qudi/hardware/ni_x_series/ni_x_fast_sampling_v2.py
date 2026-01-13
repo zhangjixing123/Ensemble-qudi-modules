@@ -45,7 +45,6 @@ class NIXSeriesFastSampling(FastCounterInterface):
                 sample_rate = 10           # this should be the same as the externel trigger rate
                 frame_size = 100           # equavalent to number of triggers per loop
                 frame_num = 2            # number of loops
-                
                 physical_sample_clock_output = 'PFI12'
 
                 # parameters of analog channels
@@ -79,8 +78,19 @@ class NIXSeriesFastSampling(FastCounterInterface):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         # self._thread_lock = RecursiveMutex()
+
+        self.first_time_start_label = True
+        self.nidaq_process = None
+        self.average_process = None
+        self.controler_pipe1, self.spectrum_pipe1 = None, None
+        self.average_pipe2, self.spectrum_pipe2 = None, None
+        self.controler_pipe3, self.average_pipe3 = None, None
+        self.state_1 = None
+        self.state_3 = None
+
+    def _start_processes(self):
+
         self.controler_pipe1, self.spectrum_pipe1 = mp.Pipe()
         self.average_pipe2, self.spectrum_pipe2 = mp.Pipe()
         self.controler_pipe3, self.average_pipe3 = mp.Pipe()
@@ -88,7 +98,9 @@ class NIXSeriesFastSampling(FastCounterInterface):
         self.state_3 = mp.Value("i", 1) #1 for RUN, 0 for STOP
 
         self.nidaq_process = mp.Process(target=communicating, args=(self.spectrum_pipe1, self.spectrum_pipe2, self.state_1, self._enable_debug))
+        self.nidaq_process.daemon = True
         self.average_process = mp.Process(target=average_func, args=(self.average_pipe2, self.average_pipe3, self.state_3, ))
+        self.average_process.daemon = True
         self.nidaq_process.start()
         self.average_process.start()
 
@@ -104,13 +116,6 @@ class NIXSeriesFastSampling(FastCounterInterface):
                                             self._adc_voltage_range,
                                             self._rw_timeout,
                                             self.external_sample_clock_source])) # send parameters
-            # self.controler_pipe1.send(np.array([self.qwBufferSize,
-            #                                     self.lSegmentSize,
-            #                                     self.qwToTransfer,
-            #                                     self.samplerate,
-            #                                     self.channel,
-            #                                     self.timeout,
-            #                                     self.input_range], dtype='int32')) # send parameters
         else:
             if self._enable_debug: 
                 print('not ready for init ') # not ready
@@ -121,47 +126,22 @@ class NIXSeriesFastSampling(FastCounterInterface):
             if self._enable_debug: 
                 print('init failed')
 
-    def reset(self):
-        # self._thread_lock = RecursiveMutex()
-        self.controler_pipe1, self.spectrum_pipe1 = mp.Pipe()
-        self.average_pipe2, self.spectrum_pipe2 = mp.Pipe()
-        self.controler_pipe3, self.average_pipe3 = mp.Pipe()
-        self.state_1 = mp.Value("i", 1) #1 for RUN, 0 for STOP
-        self.state_3 = mp.Value("i", 1) #1 for RUN, 0 for STOP
-
-        self.nidaq_process = mp.Process(target=communicating, args=(self.spectrum_pipe1, self.spectrum_pipe2, self.state_1, self._enable_debug))
-        self.average_process = mp.Process(target=average_func, args=(self.average_pipe2, self.average_pipe3, self.state_3, ))
-        self.nidaq_process.start()
-        self.average_process.start()
-
-        self.controler_pipe1.send('init')
-        if self.controler_pipe1.recv() == 1: # ready
-            self.controler_pipe1.send(list([self._device_name,
-                                            self.clk_terminal,
-                                            self._sample_rate,
-                                            self._frame_size,
-                                            self._frame_num,
-                                            self._physical_sample_clock_output,
-                                            self.analog_channels,
-                                            self._adc_voltage_range,
-                                            self._rw_timeout,
-                                            self.external_sample_clock_source])) # send parameters
-            # self.controler_pipe1.send(np.array([self.qwBufferSize,
-            #                                     self.lSegmentSize,
-            #                                     self.qwToTransfer,
-            #                                     self.samplerate,
-            #                                     self.channel,
-            #                                     self.timeout,
-            #                                     self.input_range], dtype='int32')) # send parameters
-        else:
-            if self._enable_debug: 
-                print('not ready for init ') # not ready
-        if self.controler_pipe1.recv() == 0: # finished
-            if self._enable_debug: 
-                print('init finished')
-        else:
-            if self._enable_debug: 
-                print('init failed')
+    def _stop_processes(self):
+        if self.nidaq_process and self.nidaq_process.is_alive():
+            self.nidaq_process.terminate() 
+            self.nidaq_process.join()
+        
+        if self.average_process and self.average_process.is_alive():
+            self.average_process.terminate()
+            self.average_process.join()
+            
+        if self.controler_pipe1: self.controler_pipe1.close()
+        if self.spectrum_pipe1: self.spectrum_pipe1.close()
+        if self.average_pipe2: self.average_pipe2.close()
+        if self.spectrum_pipe2: self.spectrum_pipe2.close()
+        if self.controler_pipe3: self.controler_pipe3.close()
+        if self.average_pipe3: self.average_pipe3.close()
+        
 
 
     def on_activate(self):
@@ -172,6 +152,8 @@ class NIXSeriesFastSampling(FastCounterInterface):
         self._number_of_gates = int(100)
         self._bin_width = 1
         self._record_length = int(4000)
+
+        self._start_processes()
 
         self.statusvar = 0
 
@@ -217,15 +199,15 @@ class NIXSeriesFastSampling(FastCounterInterface):
     def on_deactivate(self):
         """ Shut down the NI card.
         """
-        # if self._enable_debug:  
-        print('on_deactivate')
-        self.stop_measure()
+        if self._enable_debug:  
+            print('on_deactivate')
+        self.temporary_stop_measure()
         self.state_3.value = -1
         self.controler_pipe1.send('deactive')
         self.controler_pipe1.send(None) # excute communicating
-        self.nidaq_process.join()
-        self.average_process.join()
-        self.statusvar = 0
+
+        self._stop_processes()
+
         return
 
     def configure(self, bin_width_s, record_length_s, number_of_gates=0):
@@ -300,18 +282,39 @@ class NIXSeriesFastSampling(FastCounterInterface):
     def start_measure(self):
         """ Start the fast counter. """
         print('start_measure')
+        process_alive = (self.nidaq_process and self.nidaq_process.is_alive() and 
+                     self.average_process and self.average_process.is_alive())
+        if not process_alive:
+            print("Subprocess detected dead or broken. Restarting...")
+            self._start_processes()
         self.module_state.lock()
-        self.state_1.value, self.state_3.value = 1, 1
-        self.controler_pipe1.send('start')
+        try:
+            self.state_1.value, self.state_3.value = 1, 1
+            self.controler_pipe1.send('start')
+        except (BrokenPipeError, OSError):
+            print("Pipe broken. Restarting subprocess...")
+            self._restart_subprocess()
+            self.state_1.value, self.state_3.value = 1, 1
+            self.controler_pipe1.send('start')
         time.sleep(1)
         self.statusvar = 2
         return 0
 
     def stop_measure(self):
         """ Stop the fast counter. """
+        if self.first_time_start_label:
+            self.temporary_stop_measure()
+            self.first_time_start_label = False
+        else:
+            self.on_deactivate()
+        self.statusvar = 1
+        return 0
+    
+    def temporary_stop_measure(self):
+        """ Stop the fast counter. """
         if self.module_state() == 'locked':
             if self._enable_debug:  
-                print('stop_measure')
+                print('temporary_stop_measure')
             self.state_1.value, self.state_3.value = 0, 0
             time.sleep(0.5) # wait for stop
             self.controler_pipe1.send('stop')
@@ -327,7 +330,7 @@ class NIXSeriesFastSampling(FastCounterInterface):
         if self._enable_debug:  
             print('pause_measure')
         if self.module_state() == 'locked':
-            self.stop_measure()
+            self.temporary_stop_measure()
             self.statusvar = 3
         return 0
 
