@@ -25,3 +25,4 @@ spinapi==3.2.2
 TimeTagger==26.1.1
 transitions==0.9.2
 visa==2.21.0
+easygui

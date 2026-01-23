@@ -29,7 +29,7 @@ This is an extended collection of modules for the [qudi](https://github.com/Ulm-
     pip install -r requirements.txt
     ```
     (**Not necessary but recommended**. If you only perform the previous steps but encounter errors due to missing necessary libraries during actual runtime, it is recommended to perform this operation again.)
-
+7. Open Qudi, switch to your own configuration file.
 ---
 
 ## 🌟 Overview
@@ -55,7 +55,7 @@ Compared to the upstream repository, this fork includes:
     * `PulseTimeSeries`: Supports non-continuous time-series functionality with independent GUI, supports Nidaq and Spectrum data acquisition cards. See details in [Tutorial of PulseTimeSeries](test.txt).
 
 * **New GUI Enhancements**:
-    * Enhanced data fitting in `ODMR` module, supporting multi-peak fitting capability for arbitrary number of peak, see details in [Enhanced data fitting in ODMR](./docs/enhanced_dataFitting.md).
+    * Enhanced data fitting in `ODMR` module, supporting multi-peak fitting capability for arbitrary number of peaks, see details in [Enhanced data fitting in ODMR](./docs/enhanced_dataFitting.md).
 * **New Functionality Extand (`pi3LabTool`)**:
 
 ---
