@@ -1,4 +1,10 @@
 # Common Feature of Tabor Microwave Source
+<p style="color:grey; font-size:1.2em;"><b> 
+    Ensemble-qudi-modules <br> <i>from</i></b> Physic Institute 3 of University Stuttgart <a href="https://www.pi3.uni-stuttgart.de/">🌟</a>
+</p>
+<p align='right'>Author: <b>Chenyan</b><p>
+
+
 ---
 ## 1. Configuration
 

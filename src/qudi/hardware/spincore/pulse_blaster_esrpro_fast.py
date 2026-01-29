@@ -67,7 +67,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     Example config for copy-paste:
 
         pulseblaster:
-            module.Class: 'spincore.pulse_blaster_esrpro.PulseBlasterESRPRO'
+            module.Class: 'spincore.pulse_blaster_esrpro_fast.PulseBlasterESRPRO'
             options:
                 clock_frequency: 500e6 # in Hz
                 min_instr_len: 5    # number of clock cycles for minimal instruction
@@ -75,7 +75,10 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                 use_smart_pulse_creation: False # optinal, default is false, try to
                                                 # optimize the memory used on the device.
                 #library_file: 'spinapi64.dll'  # optional, name of the library file
-                                                # or  whole path to the file
+                                                # or  whole path to the file2
+                                                
+                activation_config: '8_ch'            # optional, config for the activation
+                                                # of the pulseblaster ['4_ch','8_ch','all']
 
     Remark to the config values:
         library_file: if the library does not lay in the default directory of
@@ -113,6 +116,9 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     _use_smart_pulse_creation = ConfigOption('use_smart_pulse_creation', default=False)
 
     _channel_delays = ConfigOption('channel_delays', default=[])
+
+    _activation_config_key = ConfigOption('activation_config', default='4_ch')
+
 
     # the library pointer is saved here
     _lib = None
@@ -264,7 +270,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         # For waveform creation:
         self._currently_loaded_waveform = ''  # loaded and armed waveform name
 
-        self._current_activation_config = list(self.get_constraints().activation_config['4_ch'])
+        self._current_activation_config = list(self.get_constraints().activation_config[self._activation_config_key])
         # self._current_activation_config = list(self.get_constraints().activation_config['8_ch'])
         self._current_activation_config.sort()
 
