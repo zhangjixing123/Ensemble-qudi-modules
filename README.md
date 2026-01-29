@@ -32,8 +32,10 @@ Compared to the upstream repository, this fork includes:
 >   * **Microwave**:
 >       * `microwave/mw_source_tabor.py`: microwave source from Tabor Company. See configuration and see common features in [Tutorial of Tabor Microwave Source](./docs/guide_for_Tabor.md).
 >       * `microwave/mw_source_anapico_4010`:  microwave source of Anapico 4010. See example of configuration in code.
+>   * **ni_x_series**:
+>       * `ni_x_series/ni_x_fast_sampling.py` + `ni_x_series/ni_x_control.py`: implement data acquisition function in Pulsed logic Module with Nidaq data acquisition card. See details in [Tutorial of Pulsed by Nidaq](./docs/guide_for_Pulsed_by_SpectrumNidaq.md).
 >   * **Spectrum**:
->       * `spectrum/sepctrum_fast_sampling.py` + `spectrum/sepctrum_control.py`: implement data acquisition function in Pulsed logic Module with spectrum data acquisition card. See details in [Tutorial of Pulsed by Spectrum](test.txt).
+>       * `spectrum/sepctrum_fast_sampling.py` + `spectrum/sepctrum_control.py`: implement data acquisition function in Pulsed logic Module with spectrum data acquisition card. See details in [Tutorial of Pulsed by Spectrum](./docs/guide_for_Pulsed_by_SpectrumNidaq.md).
 >       * `spectrum/sepctrum_finite_sampling_input.py`: support data acquisition function in ODMR logic Module with spectrum data acquisition card. See example of configuration in code.
 >   * **Third Party**:
 >       * 3rd party files to provide some essential packages support
