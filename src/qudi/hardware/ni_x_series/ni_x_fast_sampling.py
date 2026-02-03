@@ -45,6 +45,7 @@ class NIXSeriesFastSampling(FastCounterInterface):
                 sample_rate = 10           # this should be the same as the externel trigger rate
                 frame_size = 100           # equavalent to number of triggers per loop
                 frame_num = 2            # number of loops
+                
                 physical_sample_clock_output = 'PFI12'
 
                 # parameters of analog channels
@@ -120,6 +121,49 @@ class NIXSeriesFastSampling(FastCounterInterface):
             if self._enable_debug: 
                 print('init failed')
 
+    def reset(self):
+        # self._thread_lock = RecursiveMutex()
+        self.controler_pipe1, self.spectrum_pipe1 = mp.Pipe()
+        self.average_pipe2, self.spectrum_pipe2 = mp.Pipe()
+        self.controler_pipe3, self.average_pipe3 = mp.Pipe()
+        self.state_1 = mp.Value("i", 1) #1 for RUN, 0 for STOP
+        self.state_3 = mp.Value("i", 1) #1 for RUN, 0 for STOP
+
+        self.nidaq_process = mp.Process(target=communicating, args=(self.spectrum_pipe1, self.spectrum_pipe2, self.state_1, self._enable_debug))
+        self.average_process = mp.Process(target=average_func, args=(self.average_pipe2, self.average_pipe3, self.state_3, ))
+        self.nidaq_process.start()
+        self.average_process.start()
+
+        self.controler_pipe1.send('init')
+        if self.controler_pipe1.recv() == 1: # ready
+            self.controler_pipe1.send(list([self._device_name,
+                                            self.clk_terminal,
+                                            self._sample_rate,
+                                            self._frame_size,
+                                            self._frame_num,
+                                            self._physical_sample_clock_output,
+                                            self.analog_channels,
+                                            self._adc_voltage_range,
+                                            self._rw_timeout,
+                                            self.external_sample_clock_source])) # send parameters
+            # self.controler_pipe1.send(np.array([self.qwBufferSize,
+            #                                     self.lSegmentSize,
+            #                                     self.qwToTransfer,
+            #                                     self.samplerate,
+            #                                     self.channel,
+            #                                     self.timeout,
+            #                                     self.input_range], dtype='int32')) # send parameters
+        else:
+            if self._enable_debug: 
+                print('not ready for init ') # not ready
+        if self.controler_pipe1.recv() == 0: # finished
+            if self._enable_debug: 
+                print('init finished')
+        else:
+            if self._enable_debug: 
+                print('init failed')
+
+
     def on_activate(self):
         """Starts up the NI-card and performs sanity checks. 
         """
@@ -173,14 +217,15 @@ class NIXSeriesFastSampling(FastCounterInterface):
     def on_deactivate(self):
         """ Shut down the NI card.
         """
-        if self._enable_debug:  
-            print('on_deactivate')
+        # if self._enable_debug:  
+        print('on_deactivate')
         self.stop_measure()
         self.state_3.value = -1
         self.controler_pipe1.send('deactive')
         self.controler_pipe1.send(None) # excute communicating
         self.nidaq_process.join()
         self.average_process.join()
+        self.statusvar = 0
         return
 
     def configure(self, bin_width_s, record_length_s, number_of_gates=0):

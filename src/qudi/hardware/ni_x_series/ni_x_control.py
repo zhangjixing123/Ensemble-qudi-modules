@@ -138,6 +138,7 @@ class NI_State_Trans(object):
                                             max_val=max(self._adc_voltage_range),
                                             min_val=min(self._adc_voltage_range))
         self.ai.ai_channels.ai_impedance = cst.Impedance1.FIFTY_OHMS
+        # self.ai.ai_channels.ai_impedance = cst.Impedance1.ONE_M_OHM
         self.ai.timing.cfg_samp_clk_timing(self._sample_rate,
                                             source='/{0}/{1}'.format(self._device_name, 
                                                     self._physical_sample_clock_output),
@@ -289,7 +290,7 @@ def average_func(pipe2, pipe3, cmd, Vmax=5000):
     #    3: get last data
     #   -1: exit
 
-    scale = 1e6 # 6-digit resolution
+    scale = 1e8 # n-digit resolution
     while True:
         store_data = np.array([[]]).astype(np.float64)
         send_data = np.array([[]]).astype(np.int64)
@@ -307,6 +308,7 @@ def average_func(pipe2, pipe3, cmd, Vmax=5000):
                 if len(cur_data) == len(store_data):
                     store_data = store_data*(sweep/(sweep+1)) + cur_data/(sweep + 1)
                     # store_data = cur_data  # for test without any averaging func
+                    print(' >> check size of store_data:', np.shape(store_data))
                     minus = 0
                 else:
                     minus = 1
