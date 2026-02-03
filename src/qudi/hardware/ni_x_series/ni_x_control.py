@@ -137,7 +137,6 @@ class NI_State_Trans(object):
                                             terminal_config=self.diffTerminal,
                                             max_val=max(self._adc_voltage_range),
                                             min_val=min(self._adc_voltage_range))
-        # self.ai.ai_channels.ai_impedance = cst.Impedance1.ONE_M_OHM
         self.ai.ai_channels.ai_impedance = cst.Impedance1.FIFTY_OHMS
         self.ai.timing.cfg_samp_clk_timing(self._sample_rate,
                                             source='/{0}/{1}'.format(self._device_name, 
@@ -219,8 +218,6 @@ class NI_State_Trans(object):
             # except ni.DaqError:
             #     print('Getting samples from streamer failed.')
             
-
-
                         
             if self._state.value == 2:
                 print('Reset sweep count from %d to 0' % self.sweep)
@@ -267,12 +264,16 @@ class NI_State_Trans(object):
             self.ai.close()
         except ni.DaqError:
             print('Error while trying to terminate ai task.')
+        finally:
+            self.ai = None
         
         try:
             self.clk.stop()
             self.clk.close()
         except ni.DaqError:
             print('Error while trying to terminate clk task.')
+        finally:
+            self.clk = None
 
         if self._enable_debug: 
             print("Exit...\n")
@@ -288,10 +289,10 @@ def average_func(pipe2, pipe3, cmd, Vmax=5000):
     #    3: get last data
     #   -1: exit
 
-    # scale = Vmax / 32768    # gated (change unit * 5000mv / int16's max value 32768)
-    scale = 1e4 # 4位精度
+    scale = 1e6 # 6-digit resolution
     while True:
-        store_data = np.array([[]])
+        store_data = np.array([[]]).astype(np.float64)
+        send_data = np.array([[]]).astype(np.int64)
         minus = 0
         if cmd.value == -1:
             break
@@ -311,12 +312,16 @@ def average_func(pipe2, pipe3, cmd, Vmax=5000):
                     minus = 1
             if cmd.value == 3:
                 if len(cur_data) == len(store_data):
-                    pipe3.send((cur_data).astype('int32'))
+                    pipe3.send((cur_data).astype('int64'))
+                    # send_data = (store_data*scale).astype(np.int64) # TODO
+                    # pipe3.send(send_data)
                     pipe3.send(1)
                     cmd.value = 1
 
             if cmd.value == 2:
-                pipe3.send((store_data*scale).astype('int32'))
+                send_data = (store_data*scale).astype(np.int64)
+                pipe3.send(send_data)
+
                 pipe3.send(sweep + 1 - minus)
                 cmd.value = 1
 

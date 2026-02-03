@@ -1,4 +1,10 @@
 # How to use the code
+<p style="color:grey; font-size:1.2em;"><b> 
+    Ensemble-qudi-modules <br> <i>from</i></b> Physic Institute 3 of University Stuttgart <a href="https://www.pi3.uni-stuttgart.de/">🌟</a>
+</p>
+<p align='right'>Author: <b>Yuta</b><p>
+
+---
 
 The setup, including the AOM, MW source, and LIA (MFLI), is illustrated below.
 
@@ -18,6 +24,8 @@ The Pulse Blaster channels are defined as follows:
 You need to set the MFLI's external reference to **CH4** of Pulse blaster.  
 The demodulated signal is fed into the NIDAQ **ai5** port from the MFLI AUX Output channel.
 
+---
+
 ## Pulsed-ODMR
 We recommend turning on the AOM before starting measurements to stabilize the diamond's temperature. You can use the idling function in `Pulse_idling.py`.
 
@@ -35,8 +43,12 @@ The pulse sequence is set as shown below.
 <img src="./img/ODMR_sequence.png" alt='ss' width=70%/>
 </p> 
 
+---
+
 ## Pulsed-Rabi
 You need to define the resonance frequency that you want to drive.
+
+---
 
 ## Pulsed-SQ2-Ramsey
 You need to define the duration of the $\pi$/2 pulse (`pi_2_pulse`).
@@ -45,8 +57,12 @@ You need to define the duration of the $\pi$/2 pulse (`pi_2_pulse`).
 <img src="./img/SQ2Ramsey.png" alt='ss' width=70%/>
 </p> 
 
+---
+
 ## Pulsed-SQ2-Detuning-Sweep
 Sweep the MW detuning.
+
+---
 
 ## SQ2-Ramsey-Sensing
 Fix the MW frequency at the point with the steepest slope.  

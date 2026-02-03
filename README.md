@@ -27,18 +27,47 @@ While the original repository provides a robust foundation for NV center experim
 ## ✨ New Features & Modules
 Compared to the upstream repository, this fork includes:
 
-* **New Hardware**:
-    * The newly added hardware are all based on the logic originally provided by Qudi.
-    * **Microwave**:
-      * `microwave/mw_source_tabor.py`: microwave source from Tabor Company. See configuration and see common features in [Tutorial of Tabor Microwave Source](./docs/guide_for_Tabor.md).
-* **New Logic Modules**:
-    * All new Logic Modules locate under path `src\pi3LabTool`.
-    * `LockIn_Pulse`: Supports automated frequency sweeping with lock-in detection integration. See details in [Tutorial of LockIn_Pulse](./docs/guide_for_LI_Pulse.md).
-    * `PulseTimeSeries`: Supports non-continuous time-series functionality with independent GUI, supports Nidaq and Spectrum data acquisition cards. See details in [Tutorial of PulseTimeSeries](test.txt).
+> **New Hardware**:
+>   * The newly added hardware are all based on the logic originally provided by Qudi.
+>   * **Microwave**:
+>       * `microwave/mw_source_tabor.py`: microwave source from Tabor Company. See configuration and see common features in [Tutorial of Tabor Microwave Source](./docs/guide_for_Tabor.md).
+>       * `microwave/mw_source_anapico_4010`:  microwave source of Anapico 4010. See example of configuration in code.
+>   * **ni_x_series**:
+>       * `ni_x_series/ni_x_fast_sampling.py` + `ni_x_series/ni_x_control.py`: implement data acquisition function in Pulsed logic Module with Nidaq data acquisition card. See details in [Tutorial of Pulsed by Nidaq](./docs/guide_for_Pulsed_by_SpectrumNidaq.md).
+>   * **Spectrum**:
+>       * `spectrum/sepctrum_fast_sampling.py` + `spectrum/sepctrum_control.py`: implement data acquisition function in Pulsed logic Module with spectrum data acquisition card. See details in [Tutorial of Pulsed by Spectrum](./docs/guide_for_Pulsed_by_SpectrumNidaq.md).
+>       * `spectrum/sepctrum_finite_sampling_input.py`: support data acquisition function in ODMR logic Module with spectrum data acquisition card. See example of configuration in code.
+>   * **Third Party**:
+>       * 3rd party files to provide some essential packages support
+>       * locates in `hardware/thirdparty/...`
+>   * `spectrum_spincore_finite_sampling_input.py`: Hardware support for data measurement functionality of new odmr_logic_ensemble Module, calling both spectrum card and spincore together repectively for data collection and pulse blaster. See example of configuration in code.
+>   * `tt_spincore_finite_sampling_input.py`: Hardware support for data measurement functionality of new odmr_logic_ensemble Module, calling both timetagger card and spincore together repectively for data collection and pulse blaster. See example of configuration in code.
 
-* **New GUI Enhancements**:
-    * Enhanced data fitting in `ODMR` module, supporting multi-peak fitting capability for arbitrary number of peaks, see details in [Enhanced data fitting in ODMR](./docs/enhanced_dataFitting.md).
-* **New Functionality Extand (`pi3LabTool`)**:
+> **New Logic Modules**:
+>   * This section includes a more complete logic based on the logic provided by Qudi, offering more comprehensive functionality and richer GUI interfaces.
+>   * **TimeTagger Logic**: 
+>       * New logic for timetagger card, including new GUI, Logic and Hardware files for APD data collection, see details in [Tutorial of Timetagger](test.txt).
+>       * Involved files: `gui/timetagger.py`, `gui/timetagger.ui`, `logic/timetagger_logic.py`, `hardware/swabian_instrument/timetagger_api.py`, `hardware/swabian_instrument/timetagger_fast_counter_ensemble.py`
+>   * **Enhanced Pulsed Logic (GUI)**: 
+>       * Provide more effective GUI interfaces and functionalities based on original Pulse logic module of Qudi, see details in [Tutorial of Enhanced Pulsed Logic](test.txt).
+>       * Involved files: `gui/pulsed/pulsed_maingui_ensemble.py`,`gui/pulsed/ui_pulse_analysis_ensemble.ui`,`gui/pulsed/ui_pulse_editor_ensemble.ui`
+>   * **Enhanced ODMR Logic**:
+>       * Provide more effective interfaces and functionalities based on original ODMR logic module of Qudi, improve versatility and isolate global triggers and data acquisition, see details in [Tutorial of Enhanced ODMR Logic](test.txt).
+>       * Involved files: `gui/odmr/odmr_control_dockwidget_ensemble.py`, `gui/odmr/odmr_main_window_ensemble.py`, `gui/odmr/odmrgui_ensemble.py`, `logic/odmr_logic_ensemble.py`
+>   * **Enhanced Sequence Generator Logic**:
+>       * Specific update for Spincore card, integrated in original pulse logic module, achieving faster loading and bigger configuration of max. available number of pulse in pulse blaster.
+>       * Involved files: `hardware/spincore/pulse_blaster_esrpro_fast.py`, `logic/pulsed/sequence_generator_logic_fast.py`
+
+
+> **New GUI Enhancements**:
+>   * Enhanced data fitting in `ODMR` module, supporting multi-peak fitting capability for arbitrary number of peaks, see details in [Enhanced data fitting in ODMR](./docs/enhanced_dataFitting.md).
+
+> **New Functionality Extand (`pi3LabTool`)**:
+>   * **pi3LabTool**: Additional auxiliary toolkits independent of Qudi, locates in `src/pi3LabTool/`.
+>   * `LockIn_Pulse`: Supports automated frequency sweeping with lock-in detection integration. See details in [Tutorial of LockIn_Pulse](./docs/guide_for_LI_Pulse.md).
+>   * `PulseTimeSeries`: Supports non-continuous time-series functionality with independent GUI, supports Nidaq and Spectrum data acquisition cards. See details in [Tutorial of PulseTimeSeries](test.txt).
+>   * `AWG`: <span style="background-color:red; color: white;">Add introduction </span>. See details in [Tutorial of AWG](test.txt).
+
 
 ---
 
@@ -58,6 +87,7 @@ Compared to the upstream repository, this fork includes:
     ```
     (**Not necessary but recommended**. If you only perform the previous steps but encounter errors due to missing necessary libraries during actual runtime, it is recommended to perform this operation again.)
 7. Open Qudi, switch to your own configuration file.
+8. Part of the 3rd party packages (eg. packages from spectrum/timetagger/... companies) should be installed manually.
 
 
 

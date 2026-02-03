@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-# spectrum_fast_sampling.py
-# Fast sampling hardware module for Spectrum digitizers in Pulsed Logic Module.
 
 """
 A hardware module for communicating with the fast counter FPGA.
@@ -26,83 +24,136 @@ import numpy as np
 import time
 import numpy as np
 import multiprocessing as mp
-from pyspcm import *
-from spcm_tools import *
 
 from qudi.core.configoption import ConfigOption
 from qudi.interface.fast_counter_interface import FastCounterInterface
 from qudi.core.configoption import ConfigOption
 
-# from qudi.hardware.spectrum.spectrum_control import communicating, average_func
-from qudi.hardware.spectrum.spectrum_control import communicating, average_func
+from qudi.hardware.ni_x_series.ni_x_control import communicating, average_func
 
 
-class SpectrumFastSampling(FastCounterInterface):
+class NIXSeriesFastSampling(FastCounterInterface):
     """
     Example config for copy-paste:
     hardware:
-        nspectrum_fast_sampling:
-            module.Class: 'spectrum.spectrum_fast_sampling.SpectrumFastSampling'
+        ni_x_fast_sampling:
+            module.Class: 'ni_x_series.ni_x_fast_sampling.NIXSeriesFastSampling'
             options:
-                buffer_size: 4             # unit: uint64(MEGA_B(4)), as huge as possible
-                segment_size: 4096         # samples per trigger
-                samples_per_loop: 512      # unit: uint64(KILO_B( ))
-                sample_rate: 20            # unit: int64(MEGA( ))
-                channel: 1                 # channel = 1
-                timeout: 5000              # unit: ms
-                input_range: 5000          # unit: mV
+                # parameters of clock
+                device_name = 'Dev3'
+                clk_terminal = 'ctr0'
+                sample_rate = 10           # this should be the same as the externel trigger rate
+                frame_size = 100           # equavalent to number of triggers per loop
+                frame_num = 2            # number of loops
+                physical_sample_clock_output = 'PFI12'
+
+                # parameters of analog channels
+                analog_channels = 'ai0'
+                adc_voltage_range = (-10, 10)
+                timeout = 20
+                external_sample_clock_source = 'PFI0'
+
+                _enable_debug = False
     
     """
 
     # config options
-    qwBufferSize = ConfigOption(name='buffer_size', default=4, missing="info")
-    lSegmentSize = ConfigOption(name='segment_size', default=4096, missing="info")
-    # NotifySize = int32(KILO_B(lSegmentSize / 1024 * 2)) # data with type int16
-    qwToTransfer = ConfigOption(name='samples_per_loop', default=512, missing="info")
-    samplerate = ConfigOption(name='sample_rate', default=20, missing="info")
-    channel = ConfigOption(name='channel', default=1, missing="info")
-    timeout = ConfigOption(name='timeout', default=5000, missing="info")
-    input_range = ConfigOption(name='input_range', default=5000, missing="info")
+    # parameters of clock
+    _device_name = ConfigOption(name='device_name', missing="info")
+    clk_terminal = ConfigOption(name='clk_terminal', missing="info")
+    _sample_rate = ConfigOption(name='sample_rate', missing="info") # this should be the same as the externel trigger rate
+    _frame_size = ConfigOption(name='frame_size', missing="info")
+    _frame_num = ConfigOption(name='frame_num', missing="info")
+    _physical_sample_clock_output = ConfigOption(name='physical_sample_clock_output', missing="info")
+
+    # parameters of analog channels
+    analog_channels = ConfigOption(name='analog_channels', missing="info")
+    _adc_voltage_range = ConfigOption(name='adc_voltage_range', missing="info")
+    _rw_timeout = ConfigOption(name='timeout', default=30, missing="info")
+    external_sample_clock_source = ConfigOption(name='external_sample_clock_source', missing="info")
+
+    # debug switch
     _enable_debug = ConfigOption('enable_debug', default=False)
     
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         # self._thread_lock = RecursiveMutex()
+
+        self.first_time_start_label = True
+        self.nidaq_process = None
+        self.average_process = None
+        self.controler_pipe1, self.spectrum_pipe1 = None, None
+        self.average_pipe2, self.spectrum_pipe2 = None, None
+        self.controler_pipe3, self.average_pipe3 = None, None
+        self.state_1 = None
+        self.state_3 = None
+
+    def _start_processes(self):
+
         self.controler_pipe1, self.spectrum_pipe1 = mp.Pipe()
         self.average_pipe2, self.spectrum_pipe2 = mp.Pipe()
         self.controler_pipe3, self.average_pipe3 = mp.Pipe()
-        self.state_1 = mp.Value("i", 0) #1 for RUN, 0 for STOP
-        self.state_3 = mp.Value("i", 0) #1 for RUN, 0 for STOP
+        self.state_1 = mp.Value("i", 1) #1 for RUN, 0 for STOP
+        self.state_3 = mp.Value("i", 1) #1 for RUN, 0 for STOP
 
-        self.spectrum_process = mp.Process(target=communicating, args=(self.spectrum_pipe1, self.spectrum_pipe2, self.state_1, self._enable_debug))
+        self.nidaq_process = mp.Process(target=communicating, args=(self.spectrum_pipe1, self.spectrum_pipe2, self.state_1, self._enable_debug))
+        self.nidaq_process.daemon = True
         self.average_process = mp.Process(target=average_func, args=(self.average_pipe2, self.average_pipe3, self.state_3, ))
-        self.spectrum_process.start()
+        self.average_process.daemon = True
+        self.nidaq_process.start()
         self.average_process.start()
 
         self.controler_pipe1.send('init')
         if self.controler_pipe1.recv() == 1: # ready
-            self.controler_pipe1.send(np.array([self.qwBufferSize,
-                                                self.lSegmentSize,
-                                                self.qwToTransfer,
-                                                self.samplerate,
-                                                self.channel,
-                                                self.timeout,
-                                                self.input_range], dtype='int32')) # send parameters
+            self.controler_pipe1.send(list([self._device_name,
+                                            self.clk_terminal,
+                                            self._sample_rate,
+                                            self._frame_size,
+                                            self._frame_num,
+                                            self._physical_sample_clock_output,
+                                            self.analog_channels,
+                                            self._adc_voltage_range,
+                                            self._rw_timeout,
+                                            self.external_sample_clock_source])) # send parameters
         else:
-            if self._enable_debug: print('not ready for init ') # not ready
+            if self._enable_debug: 
+                print('not ready for init ') # not ready
         if self.controler_pipe1.recv() == 0: # finished
-            if self._enable_debug: print('init finished')
+            if self._enable_debug: 
+                print('init finished')
         else:
-            if self._enable_debug: print('init failed')
+            if self._enable_debug: 
+                print('init failed')
+
+    def _stop_processes(self):
+        if self.nidaq_process and self.nidaq_process.is_alive():
+            self.nidaq_process.terminate() 
+            self.nidaq_process.join()
+        
+        if self.average_process and self.average_process.is_alive():
+            self.average_process.terminate()
+            self.average_process.join()
+            
+        if self.controler_pipe1: self.controler_pipe1.close()
+        if self.spectrum_pipe1: self.spectrum_pipe1.close()
+        if self.average_pipe2: self.average_pipe2.close()
+        if self.spectrum_pipe2: self.spectrum_pipe2.close()
+        if self.controler_pipe3: self.controler_pipe3.close()
+        if self.average_pipe3: self.average_pipe3.close()
+        
+
 
     def on_activate(self):
         """Starts up the NI-card and performs sanity checks. 
         """
-        if self._enable_debug: print('on activate')
+        if self._enable_debug: 
+            print('on activate')
         self._number_of_gates = int(100)
         self._bin_width = 1
         self._record_length = int(4000)
+
+        self._start_processes()
 
         self.statusvar = 0
 
@@ -139,21 +190,24 @@ class SpectrumFastSampling(FastCounterInterface):
 
         ALL THE PRESENT KEYS OF THE CONSTRAINTS DICT MUST BE ASSIGNED!
         """
-        if self._enable_debug:  print('get_constraints')
+        if self._enable_debug:  
+            print('get_constraints')
         constraints = dict()
-        constraints['hardware_binwidth_list'] = [1/40e6, 1/20e6, 1/15e6, 1/10e6, 1/2e6]
+        constraints['hardware_binwidth_list'] = [1/1e3, 1/100e3, 1/20e3, 1/200e3, 1/245e3,1/250e3]
         return constraints
 
     def on_deactivate(self):
         """ Shut down the NI card.
         """
-        if self._enable_debug:  print('on_deactivate')
-        self.stop_measure()
+        if self._enable_debug:  
+            print('on_deactivate')
+        self.temporary_stop_measure()
         self.state_3.value = -1
         self.controler_pipe1.send('deactive')
         self.controler_pipe1.send(None) # excute communicating
-        self.spectrum_process.join()
-        self.average_process.join()
+
+        self._stop_processes()
+
         return
 
     def configure(self, bin_width_s, record_length_s, number_of_gates=0):
@@ -172,8 +226,10 @@ class SpectrumFastSampling(FastCounterInterface):
                     gate_length_s: the actual set gate length in seconds
                     number_of_gates: the number of gated, which are accepted
         """
-        if self._enable_debug:  print('configure')
-        if self._enable_debug:  print('number of gates:',number_of_gates)
+        if self._enable_debug:  
+            print('configure')
+        if self._enable_debug:  
+            print('number of gates:',number_of_gates)
         # self._number_of_gates = number_of_gates
         # print(self._number_of_gates)
         # self._bin_width = bin_width_s * 1e5 
@@ -187,46 +243,78 @@ class SpectrumFastSampling(FastCounterInterface):
         self._number_of_gates = number_of_gates
 
         
-        lNotifySize_list = np.array([1,2,4,8,16,32,64,128,256,512,1e3,2e3,4e3],dtype='int') # Notify size can only in this list
-        lSegmentSize_list = lNotifySize_list * 1024 / 2 
-        temp_list = np.absolute(lSegmentSize_list - self._record_length / self._bin_width)
+        # lNotifySize_list = np.array([1,2,4,8,16,32,64,128,256,512,1e3,2e3,4e3],dtype='int') # Notify size can only in this list
+        # lSegmentSize_list = lNotifySize_list * 1024 / 2 
+        # temp_list = np.absolute(lSegmentSize_list - self._record_length / self._bin_width)
          
-        self.lSegmentSize = int(lSegmentSize_list[np.where(temp_list == np.min(temp_list))])
-        self.qwToTransfer = self.lSegmentSize * self._number_of_gates * 2 / 1024
-        self.qwBufferSize = self.qwToTransfer 
-        self.samplerate = int(1/self._bin_width/1e3)
+        # self.lSegmentSize = int(lSegmentSize_list[np.where(temp_list == np.min(temp_list))])
+        # self.qwToTransfer = self.lSegmentSize * self._number_of_gates * 2 / 1024
+        # self.qwBufferSize = self.qwToTransfer 
+
+        self._sample_rate = int(1/self._bin_width)
+        self._frame_size = int(self._record_length / self._bin_width)
+        self._frame_num = self._number_of_gates
+
         
         self.controler_pipe1.send('config')
         if self.controler_pipe1.recv() == 1: # ready
-            self.controler_pipe1.send(np.array([self.qwBufferSize,
-                                                self.lSegmentSize,
-                                                self.qwToTransfer,
-                                                self.samplerate,
-                                                self.channel,
-                                                self.timeout,
-                                                self.input_range], dtype='int')) # send parameters
-            if self._enable_debug:  print('not ready for config ') # not ready
+            self.controler_pipe1.send(list([self._device_name,
+                                            self.clk_terminal,
+                                            self._sample_rate,
+                                            self._frame_size,
+                                            self._frame_num,
+                                            self._physical_sample_clock_output,
+                                            self.analog_channels,
+                                            self._adc_voltage_range,
+                                            self._rw_timeout,
+                                            self.external_sample_clock_source])) # send parameters
+            if self._enable_debug:  
+                print('not ready for config ') # not ready
         if self.controler_pipe1.recv() == 0: # finished
-            if self._enable_debug:  print('config finished')
+            if self._enable_debug:  
+                print('config finished')
         else:
-            if self._enable_debug:  print('config failed')
+            if self._enable_debug:  
+                print('config failed')
 
         return self._bin_width, self._record_length, self._number_of_gates
 
     def start_measure(self):
         """ Start the fast counter. """
         print('start_measure')
+        process_alive = (self.nidaq_process and self.nidaq_process.is_alive() and 
+                     self.average_process and self.average_process.is_alive())
+        if not process_alive:
+            print("Subprocess detected dead or broken. Restarting...")
+            self._start_processes()
         self.module_state.lock()
-        self.state_1.value, self.state_3.value = 1, 1
-        self.controler_pipe1.send('start')
+        try:
+            self.state_1.value, self.state_3.value = 1, 1
+            self.controler_pipe1.send('start')
+        except (BrokenPipeError, OSError):
+            print("Pipe broken. Restarting subprocess...")
+            self._restart_subprocess()
+            self.state_1.value, self.state_3.value = 1, 1
+            self.controler_pipe1.send('start')
         time.sleep(1)
         self.statusvar = 2
         return 0
 
     def stop_measure(self):
         """ Stop the fast counter. """
+        if self.first_time_start_label:
+            self.temporary_stop_measure()
+            self.first_time_start_label = False
+        else:
+            self.on_deactivate()
+        self.statusvar = 1
+        return 0
+    
+    def temporary_stop_measure(self):
+        """ Stop the fast counter. """
         if self.module_state() == 'locked':
-            if self._enable_debug:  print('stop_measure')
+            if self._enable_debug:  
+                print('temporary_stop_measure')
             self.state_1.value, self.state_3.value = 0, 0
             time.sleep(0.5) # wait for stop
             self.controler_pipe1.send('stop')
@@ -239,9 +327,10 @@ class SpectrumFastSampling(FastCounterInterface):
 
         Fast counter must be initially in the run state to make it pause.
         """
-        if self._enable_debug:  print('pause_measure')
+        if self._enable_debug:  
+            print('pause_measure')
         if self.module_state() == 'locked':
-            self.stop_measure()
+            self.temporary_stop_measure()
             self.statusvar = 3
         return 0
 
@@ -250,7 +339,8 @@ class SpectrumFastSampling(FastCounterInterface):
 
         If fast counter is in pause state, then fast counter will be continued.
         """
-        if self._enable_debug:  print('continue_measure')
+        if self._enable_debug:  
+            print('continue_measure')
         if self.module_state() == 'locked':
             self.start_measure()
             time.sleep(1)
@@ -280,7 +370,8 @@ class SpectrumFastSampling(FastCounterInterface):
         care of in this hardware class. A possible overflow of the histogram
         bins must be caught here and taken care of.
         """
-        if self._enable_debug:  print('get_data_trace')
+        if self._enable_debug:  
+            print('get_data_trace')
         self.state_3.value = 2 if accumulate else 3
 
         if timeout:
@@ -300,10 +391,12 @@ class SpectrumFastSampling(FastCounterInterface):
             cur_sweep = self.controler_pipe3.recv()
 
         if self.state_3.value == 1:
-            if self._enable_debug:  print('run well---')
+            if self._enable_debug:  
+                print('run well---')
         info_dict = {'elapsed_sweeps': cur_sweep,
                      'elapsed_time': None}
-        print(data.shape)
+        if self._enable_debug:  
+            print('current data shape: ', data.shape)
         return data, info_dict
 
     def reset_sweep_count(self):
@@ -323,7 +416,8 @@ class SpectrumFastSampling(FastCounterInterface):
 
     def get_binwidth(self):
         """ Returns the width of a single timebin in the timetrace in seconds. """
-        if self._enable_debug:  print('get_binwidth')
+        if self._enable_debug:  
+            print('get_binwidth')
         width_in_seconds = self._bin_width 
         return width_in_seconds
 
