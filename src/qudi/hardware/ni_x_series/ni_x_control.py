@@ -61,6 +61,17 @@ class NI_State_Trans(object):
         self._adc_voltage_range = parameters[7]
         self._rw_timeout = parameters[8]
         self.external_sample_clock_source = parameters[9]
+        # diff mode parameters
+        self.diff_mode_status = parameters[10]
+        self.diff_time_A = parameters[11]
+        self.diff_time_B = parameters[12]
+        self.diff_time_C = parameters[13]
+        self.diff_time_D = parameters[14]
+        self.diff_index_A = int(self._sample_rate * self.diff_time_A)
+        self.diff_index_B = int(self._sample_rate * self.diff_time_B)
+        self.diff_index_C = int(self._sample_rate * self.diff_time_C)
+        self.diff_index_D = int(self._sample_rate * self.diff_time_D)
+
         self.sampleMode_ai = cst.AcquisitionType.CONTINUOUS
         self.diffTerminal = cst.TerminalConfiguration.RSE
 
@@ -80,6 +91,12 @@ class NI_State_Trans(object):
             print("ADC Voltage Range = {0} V".format(parameters[7]),type(parameters[7]))
             print("Read/Write Timeout = {0} ms".format(parameters[8]),type(parameters[8]))
             print("External Sample Clock Source = {0}".format(parameters[9]),type(parameters[9]))
+            print("Diff Mode Status = {0}".format(parameters[10]),type(parameters[10]))
+            if parameters[10]: # if diff mode is enabled, print the diff index
+                print("Diff time A = {0}".format(parameters[11]),type(parameters[11]), '  Diff index A = {0}'.format(self.diff_index_A), type(self.diff_index_A))
+                print("Diff time B = {0}".format(parameters[12]),type(parameters[12]), '  Diff index B = {0}'.format(self.diff_index_B), type(self.diff_index_B))
+                print("Diff time C = {0}".format(parameters[13]),type(parameters[13]), '  Diff index C = {0}'.format(self.diff_index_C), type(self.diff_index_C))
+                print("Diff time D = {0}".format(parameters[14]),type(parameters[14]), '  Diff index D = {0}'.format(self.diff_index_D), type(self.diff_index_D))
             print("Sample Mode (AI) = cst.AcquisitionType.CONTINUOUS")
             print('**********++++++++++**********\n')
         #  -------------------------------------------------------
@@ -229,6 +246,8 @@ class NI_State_Trans(object):
                 print('sended sweep is :', self.sweep)
             self.pipe2.send(store_data)
             self.pipe2.send(self.sweep) 
+            # new function, send info about diff mode and diff index for current sweep, in order to caculate diff value in the average process
+            self.pipe2.send([self.diff_mode_status, self.diff_index_A, self.diff_index_B, self.diff_index_C, self.diff_index_D]) # send diff mode status and diff index for current sweep
         self.pipe2.send(None)
         if self._enable_debug: 
             print('sampling finished!')
@@ -290,7 +309,7 @@ def average_func(pipe2, pipe3, cmd, Vmax=5000):
     #    3: get last data
     #   -1: exit
 
-    scale = 1e8 # n-digit resolution
+    scale = 1e10 # n-digit resolution
     while True:
         store_data = np.array([[]]).astype(np.float64)
         send_data = np.array([[]]).astype(np.int64)
@@ -298,17 +317,32 @@ def average_func(pipe2, pipe3, cmd, Vmax=5000):
         if cmd.value == -1:
             break
         while cmd.value:
-            cur_data = pipe2.recv()
+            # 1st read: get data; 
+            cur_data = pipe2.recv() 
             if cur_data is None:
                 break 
-            sweep = pipe2.recv() - 1
+            # 2nd read: get sweep count; 
+            sweep = pipe2.recv() - 1 
+            # 3rd read: get diff mode info
+            diff_mode_info = pipe2.recv() # receive diff mode info
+            diff_mode_status = diff_mode_info[0]
+            diff_index_A = diff_mode_info[1]
+            diff_index_B = diff_mode_info[2]
+            diff_index_C = diff_mode_info[3]
+            diff_index_D = diff_mode_info[4]
+            
+            # if diff mode is enabled, do diff operation first, in order to get rid of time-related noise
+            if diff_mode_status:
+                row_val = cur_data[:, diff_index_A:diff_index_B].mean(axis=1) - cur_data[:, diff_index_C:diff_index_D].mean(axis=1)
+                cur_data = np.repeat(row_val[:, None], cur_data.shape[1], axis=1) + 0.1 #TODO: remove the bias later or use a more resonable value
+
             if not sweep: # first sweep
                 store_data = cur_data
             else:
                 if len(cur_data) == len(store_data):
                     store_data = store_data*(sweep/(sweep+1)) + cur_data/(sweep + 1)
                     # store_data = cur_data  # for test without any averaging func
-                    print(' >> check size of store_data:', np.shape(store_data))
+                    # print(' >> check size of store_data:', np.shape(store_data))
                     minus = 0
                 else:
                     minus = 1

@@ -40,18 +40,26 @@ class NIXSeriesFastSampling(FastCounterInterface):
             module.Class: 'ni_x_series.ni_x_fast_sampling.NIXSeriesFastSampling'
             options:
                 # parameters of clock
-                device_name = 'Dev3'
-                clk_terminal = 'ctr0'
-                sample_rate = 10           # this should be the same as the externel trigger rate
-                frame_size = 100           # equavalent to number of triggers per loop
-                frame_num = 2            # number of loops
-                physical_sample_clock_output = 'PFI12'
+                device_name : 'Dev3'
+                clk_terminal : 'ctr0'
+                sample_rate : 10           # this should be the same as the externel trigger rate
+                frame_size : 100           # equavalent to number of triggers per loop
+                frame_num : 2            # number of loops
+                physical_sample_clock_output : 'PFI12'
 
                 # parameters of analog channels
-                analog_channels = 'ai0'
-                adc_voltage_range = (-10, 10)
-                timeout = 20
-                external_sample_clock_source = 'PFI0'
+                analog_channels : 'ai0'
+                adc_voltage_range : (-10, 10)
+                timeout : 20
+                external_sample_clock_source : 'PFI0'
+
+                # diff mode: in order to get rid of time-related noie
+                # effective range: (time B - time A) - (time D - time C)
+                diff_mode_status : False
+                diff_time_A : 0        # s
+                diff_time_B : 2.2e-6   # s
+                diff_time_C : 66e-6    # s
+                diff_time_D : 68e-6    # s
 
                 _enable_debug = False
     
@@ -71,6 +79,13 @@ class NIXSeriesFastSampling(FastCounterInterface):
     _adc_voltage_range = ConfigOption(name='adc_voltage_range', missing="info")
     _rw_timeout = ConfigOption(name='timeout', default=30, missing="info")
     external_sample_clock_source = ConfigOption(name='external_sample_clock_source', missing="info")
+
+    # diff mode
+    diff_mode_status = ConfigOption(name='diff_mode_status', default=False)
+    diff_time_A = ConfigOption(name='diff_time_A', default=0)     
+    diff_time_B = ConfigOption(name='diff_time_B', default=1e-6)
+    diff_time_C = ConfigOption(name='diff_time_C', default=2e-6)    
+    diff_time_D = ConfigOption(name='diff_time_D', default=3e-6)    
 
     # debug switch
     _enable_debug = ConfigOption('enable_debug', default=False)
@@ -115,7 +130,13 @@ class NIXSeriesFastSampling(FastCounterInterface):
                                             self.analog_channels,
                                             self._adc_voltage_range,
                                             self._rw_timeout,
-                                            self.external_sample_clock_source])) # send parameters
+                                            self.external_sample_clock_source,
+                                            self.diff_mode_status, # new param form here about diff mode
+                                            self.diff_time_A,
+                                            self.diff_time_B,
+                                            self.diff_time_C,
+                                            self.diff_time_D
+                                            ])) # send parameters
         else:
             if self._enable_debug: 
                 print('not ready for init ') # not ready
@@ -267,7 +288,13 @@ class NIXSeriesFastSampling(FastCounterInterface):
                                             self.analog_channels,
                                             self._adc_voltage_range,
                                             self._rw_timeout,
-                                            self.external_sample_clock_source])) # send parameters
+                                            self.external_sample_clock_source,
+                                            self.diff_mode_status, # new param form here about diff mode
+                                            self.diff_time_A,
+                                            self.diff_time_B,
+                                            self.diff_time_C,
+                                            self.diff_time_D
+                                            ])) # send parameters
             if self._enable_debug:  
                 print('not ready for config ') # not ready
         if self.controler_pipe1.recv() == 0: # finished
