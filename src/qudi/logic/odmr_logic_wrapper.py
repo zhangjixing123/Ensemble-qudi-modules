@@ -67,6 +67,10 @@ class OdmrLogicWrapper(OdmrLogic):
 
     @QtCore.Slot()
     def start_odmr_scan(self):
+        # account for the possibility that another programm used the timing 
+        # generator inbetween and changed the loaded settings
+        self._timing_setup()
+        
         self._timing_generator().start()
         super().start_odmr_scan()
 
