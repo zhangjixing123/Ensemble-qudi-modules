@@ -30,7 +30,7 @@ import numpy as np
 from qudi.util.mutex import Mutex
 from qudi.core.configoption import ConfigOption
 from qudi.interface.microwave_interface import MicrowaveInterface, MicrowaveConstraints
-from qudi.util.enums import SamplingOutputMode
+from qudi.util.enums import SamplingOutputMode, FrequencyModulationSource, FrequencyModulationChannel
 
 
 class MicrowaveSmiq(MicrowaveInterface):
@@ -50,6 +50,7 @@ class MicrowaveSmiq(MicrowaveInterface):
             frequency_max: null  # optional, in Hz
             power_min: null  # optional, in dBm
             power_max: null  # optional, in dBm
+            frequency_modulation_source: 'EXT1' # optional 
     """
 
     _visa_address = ConfigOption('visa_address', missing='error')
@@ -60,6 +61,10 @@ class MicrowaveSmiq(MicrowaveInterface):
     _config_freq_max = ConfigOption('frequency_max', default=None)
     _config_power_min = ConfigOption('power_min', default=None)
     _config_power_max = ConfigOption('power_max', default=None)
+    _fm_source = ConfigOption('frequency_modulation_source', default=None,
+                              constructor=lambda x: FrequencyModulationSource[x.upper()]) 
+    _fm_channel = ConfigOption('frequency_modulation_channel', default=None,
+                                  constructor=lambda x: FrequencyModulationChannel[x.upper()])
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -75,6 +80,7 @@ class MicrowaveSmiq(MicrowaveInterface):
         self._scan_frequencies = None
         self._scan_mode = None
         self._scan_sample_rate = 0.
+        self._fm_deviation = None
 
     def on_activate(self):
         """ Initialisation performed during activation of the module. """
@@ -131,7 +137,11 @@ class MicrowaveSmiq(MicrowaveInterface):
             frequency_limits=freq_limits,
             scan_size_limits=(2, 4000),
             sample_rate_limits=(0.1, 300),  # FIXME: Look up the proper specs for sample rate
-            scan_modes=(SamplingOutputMode.JUMP_LIST, SamplingOutputMode.EQUIDISTANT_SWEEP)
+            scan_modes=(SamplingOutputMode.JUMP_LIST, SamplingOutputMode.EQUIDISTANT_SWEEP),
+            fm_sources=(FrequencyModulationSource.INT,FrequencyModulationSource.EXT1,FrequencyModulationSource.EXT2),
+            fm_channels=(FrequencyModulationChannel.FM1,FrequencyModulationChannel.FM2),
+            fm_limits=(0,2e6), #FIXME Implement proper boundaries for all frequency ranges
+            fm_interal_frequency=(0,1e6) #TODO: Look up specs
         )
 
         self._scan_frequencies = None
@@ -222,6 +232,33 @@ class MicrowaveSmiq(MicrowaveInterface):
         with self._thread_lock:
             return self._scan_sample_rate
 
+    @property
+    def modulation_channel(self):
+        """Read-only property of the configured frequency modulation channel.
+
+        @return FrequencyModulationChannel: Current frequency modulation channel
+        """
+        with self._thread_lock:
+            return self._fm_channel
+
+    @property
+    def modulation_source(self):
+        """Read-only property of the configured frequency modulation source.
+
+        @return FrequencyModulationSource: Current frequency modulation source
+        """
+        with self._thread_lock:
+            return self._fm_source
+
+    @property
+    def modulation_deviation(self):
+        """Read-only property of the configured frequency modulation deviation in Hz
+
+        @return float: Current frquency modulation deviation in Hz
+        """
+        with self._thread_lock:
+            return self._fm_deviation
+
     def set_cw(self, frequency, power):
         """Configure the CW microwave output. Does not start physical signal output, see also
         "cw_on".
@@ -240,6 +277,114 @@ class MicrowaveSmiq(MicrowaveInterface):
             self._command_wait(f':POW {power:f}')
             self._cw_power = float(self._device.query(':POW?'))
             self._cw_frequency = float(self._device.query(':FREQ?'))
+
+    def set_frequency_unrestricted(self,frequency):
+        """
+        Configuration of the CW frequency. Does not change the physical output state.
+        Use with caution, as no runtime checks are performed to allow for in-situ
+        changes, necessary for something like a magnetometer.
+
+        NOTE: The proper way would be to implement this as setter of cw_frequency, 
+            however this could lead to unexpected behaviour and accidental set 
+            parameters in existing code and is therefore ommited
+
+        @param float frequency: frequency set in Hz
+        """
+        self._assert_cw_parameters_args(frequency,self._cw_power)
+        self._device.write(f':FREQ {frequency:f}')
+        self._cw_frequency = float(self._device.query(':FREQ?'))
+
+
+    def set_power_unrestricted(self,power):
+        """
+        Configuration of the CW power. Does not change the physical output state.
+        Use with caution, as no runtime checks are performed to allow for in-situ
+        changes, necessary for something like a magnetometer.
+
+        NOTE: The proper way would be to implement this as setter of cw_power, 
+            however this could lead to unexpected behaviour and accidental set 
+            parameters in existing code and is therefore ommited
+
+        @param float power: power set in dBm
+        """
+        #TODO: Check if the assertion check is fast enough
+        self._assert_cw_parameters_args(self._cw_frequency,power)
+        self._device.write(f':POW {power:f}')
+        self._cw_power = float(self._device.query(':POW?'))
+
+    def configure_modulation(self,deviation=100e3,internal_frequency=None):
+        """
+        For now only external coupling with AC is implemented.
+        Does not change the modulation state, see also "set_mod_state".
+
+        @param float deviation: optional argument to set the initial modulation 
+        deviation in Hz (if state: INT) or Hz/V (if state: EXT); default value 100 kHz
+        @param float internal_frequency: optional internal modulation frequency 
+        if the internal modulation is used; default is None, needs to be explicitly set
+        """
+        with self._thread_lock:
+            if self.module_state() != 'idle':
+                raise RuntimeError('Unable to configure frequency scan. Microwave output active.')
+
+            # Sanity checks
+            if not self._fm_channel or not self._fm_source:
+                raise RuntimeError('Modulation source or channel (or both) not set')
+
+            if internal_frequency:
+                assert self.constraints.fm_internal_frequency_in_range(internal_frequency), \
+                        f'Internal Modulation frequency to set ({internal_frequency} Hz) is out of bounds for allowed range ' \
+                        f'{self.constraints.fm_internal_frequency}'
+                        
+            
+            assert self.constraints.fm_in_range(deviation), \
+                        f'Modulation frequency deviation to set ({deviation} Hz) is out of bounds for allowed range ' \
+                        f'{self.constraints.fm_limits}'
+
+            
+
+            self._command_wait(f':{self._fm_channel.name:s}:SOUR {self._fm_source.name:s}')
+
+            if not self._fm_source == FrequencyModulationSource.INT:
+                self._command_wait(f':{self._fm_channel.name:s}:{self._fm_source.name:s}:COUP AC')
+            elif not internal_frequency == None:
+                self._command_wait(f':{self._fm_channel.name:s}:INT:FREQ {internal_frequency:f}')
+            else:
+                raise ValueError('No frequency set for internal modulation')
+            self._command_wait(f':{self._fm_channel.name:s}:DEV {deviation:f}')
+
+            self._fm_deviation = float(self._device.query(f':{self._fm_channel.name:s}:DEV {deviation:f}'))
+
+    def set_mod_deviation(self,deviation):
+        """
+        Configuration of the modulation deviation in Hz (if state: INT) or 
+        Hz/V (if state: EXT).
+        Use with caution, as no runtime checks are performed to allow for in-situ
+        changes, necessary for something like a magnetometer.
+
+        @param float deviation: modulation depth/deviation to be set
+        """
+        # Sanity check
+        if not self._fm_channel or not self._fm_source:
+            raise RuntimeError('Modulation source or channel (or both) not set')
+        
+        assert self.constraints.fm_in_range(deviation)[0], \
+                                f'Modulation frequency deviation to set ({deviation} Hz) is out of bounds for allowed range ' \
+                                f'{self.constraints._fm_limits}'
+        
+        self._device.write(f'{self._fm_channel.name:s}:DEV {deviation:f}')
+
+    def set_mod_state(self,state):
+        """
+        Changes the state of the modulation to ON/OFF
+        """
+        # Sanity check
+        if not self._fm_channel or not self._fm_source:
+            raise RuntimeError('Modulation source or channel (or both) not set')
+        
+        if state in ['ON','OFF']:
+            self._command_wait(f'{self._fm_channel.name:s}:STAT {state:s}')
+        else:
+            raise ValueError('Not a valid modulation state')
 
     def configure_scan(self, power, frequencies, mode, sample_rate):
         """

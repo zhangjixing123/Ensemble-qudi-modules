@@ -46,3 +46,26 @@ class SamplingOutputMode(Enum):
     EQUIDISTANT_SWEEP = 1
     CONSTANT = 2
     INVALID = 3
+
+class FrequencyModulationSource(Enum):
+    """Sources for frequency modulation
+    Note that this does not influence the indipendent modulators (of option SM-B5).
+
+    INT: Internal FM generator provides the modulation reference
+    EXT1: Modulation reference provided through the external channel 1
+    EXT2: Modulation reference provided through the external channel 2
+    """
+    INT = 0
+    EXT1 = 1
+    EXT2 = 2
+    INVALID = 3
+
+class FrequencyModulationChannel(Enum):
+    """Independent frequency modulators of the option SM-B5
+
+    FM1: First modulator
+    FM2: Second modulator
+    """
+    FM1 = 0
+    FM2 = 1
+    INVALID = 2

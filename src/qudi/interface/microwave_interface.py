@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 from abc import abstractmethod
 
 from qudi.core.module import Base
-from qudi.util.enums import SamplingOutputMode
+from qudi.util.enums import SamplingOutputMode, FrequencyModulationSource, FrequencyModulationChannel
 from qudi.util.helpers import in_range
 
 
@@ -114,6 +114,30 @@ class MicrowaveInterface(Base):
         """
         raise NotImplementedError
 
+    @property
+    @abstractmethod
+    def modulation_deviation(self):
+        """Read-only property of the configured frequency modulation deviation in Hz
+
+        @return float: Current frquency modulation deviation in Hz
+        """
+
+    @property
+    @abstractmethod
+    def modulation_source(self):
+        """Read-only property of the configured frequency modulation source.
+
+        @return FrequencyModulationSource: Current frequency modulation source
+        """
+
+    @property
+    @abstractmethod
+    def modulation_channel(self):
+        """Read-only property of the configured frequency modulation channel.
+
+        @return FrequencyModulationChannel: Current frequency modulation channel
+        """
+
     @abstractmethod
     def off(self):
         """Switches off any microwave output (both scan and CW).
@@ -160,6 +184,65 @@ class MicrowaveInterface(Base):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def set_frequency(self,frequency):
+        """
+        Configuration of the CW frequency. Does not change the physical output state.
+        Use with caution, as no runtime checks are performed to allow for in-situ
+        changes, necessary for something like a magnetometer.
+
+        NOTE: The proper way would be to implement this as setter of cw_frequency, 
+            however this could lead to unexpected behaviour and accidental set 
+            parameters in existing code and is therefore ommited
+
+        @param float frequency: frequency set in Hz
+        """
+        raise NotImplementedError
+
+    def set_power(self,power):
+        """
+        Configuration of the CW power. Does not change the physical output state.
+        Use with caution, as no runtime checks are performed to allow for in-situ
+        changes, necessary for something like a magnetometer.
+
+        NOTE: The proper way would be to implement this as setter of cw_power, 
+            however this could lead to unexpected behaviour and accidental set 
+            parameters in existing code and is therefore ommited
+
+        @param float power: power set in dBm
+        """
+        raise NotImplementedError
+
+    def configure_modulation(self,deviation=100e3,internal_frequency=None):
+        """
+        For now only external coupling with AC is implemented.
+        Does not change the modulation state, see also "set_mod_state".
+
+        @param float deviation: optional argument to set the initial modulation 
+        deviation in Hz (if state: INT) or Hz/V (if state: EXT); default value 100 kHz
+        @param float internal_frequency: optional internal modulation frequency 
+        if the internal modulation is used; default is None, needs to be explicitly set
+        """
+        raise NotImplementedError
+
+    def set_mod_deviation(self,deviation):
+        """
+        Configuration of the modulation deviation in Hz (if state: INT) or 
+        Hz/V (if state: EXT).
+        Use with caution, as no runtime checks are performed to allow for in-situ
+        changes, necessary for something like a magnetometer.
+
+        @param float deviation: modulation depth/deviation to be set
+        """
+        raise NotImplementedError
+
+    def set_mod_state(self,state):
+        """
+        Changes the state of the modulation to ON/OFF
+        """
+        raise NotImplementedError
+
+    
     # ToDo: Think about if the logic should handle trigger settings and expand the interface if so.
     #  But I would argue the trigger config is something static and hard-wired for a specific setup,
     #  so it should be configurable via config and not handled by logic at runtime.
@@ -216,13 +299,22 @@ class MicrowaveConstraints:
     """A container to hold all constraints for microwave sources.
     """
     def __init__(self, power_limits, frequency_limits, scan_size_limits, sample_rate_limits,
-                 scan_modes):
+                 scan_modes, fm_sources=None, fm_channels=None, fm_limits = None, fm_interal_frequency = None):
         """
         @param float[2] power_limits: Allowed min and max power
         @param float[2] frequency_limits: Allowed min and max frequency
         @param int[2] scan_size_limits: Allowed min and max number of samples for scanning
         @param float[2] sample_rate_limits: Allowed min and max scan sample rate (in Hz)
         @param SamplingOutputMode[] scan_modes: Allowed scan mode Enums
+        @param FrequencyModulationSource[] fm_sources: optional, allowed frequency 
+                modulation scoures Enums; default: None, to allow compatibility with all existing code
+                NOTE: all parameters regarding frequency modulation need to be explicitly set 
+        @param FrequencyModulationChannel[] fm_sources: optional, allowed frequency 
+                modulation channels Enums; default: None, to allow compatibility with all existing code
+        @param float[2] fm_limits: optional, allowed min and max frequency modulation deviations; 
+                default: None, to allow compatibility with all existing code
+        @param float[2] fm_internal_frequency: optional, allowed min and max frequencies 
+                of the internal modulation; default: None, to allow for compatibility with all existing code        
         """
         assert len(power_limits) == 2, 'power_limits must be iterable of length 2 (min, max)'
         assert len(frequency_limits) == 2, \
@@ -233,13 +325,26 @@ class MicrowaveConstraints:
             'sample_rate_limits must be iterable of length 2 (min, max)'
         assert all(isinstance(mode, SamplingOutputMode) for mode in scan_modes), \
             'scan_modes must be iterable containing only qudi.util.enums.SamplingOutputMode Enums'
-
+        assert all(isinstance(source, FrequencyModulationSource) for source in fm_sources), \
+            'fm_source must be iterable containing only qudi.util.enums.FrequencyModulationSource Enums'
+        assert all(isinstance(channel, FrequencyModulationChannel) for channel in fm_channels), \
+            'fm_channels must be iterable containing only qudi.util.enums.FrequencyModulationChannel Enums'
+        assert len(fm_limits) == 2, \
+            'fm_limits must be iterable of length 2 (min, max)'
+        assert len(fm_interal_frequency) == 2, \
+            'fm_internal_frequency must be iterable of length 2 (min, max)'
+                
+        
         tmp = [int(lim) for lim in scan_size_limits]
         self._scan_size_limits = (min(tmp), max(tmp))
         self._sample_rate_limits = (min(sample_rate_limits), max(sample_rate_limits))
         self._scan_modes = frozenset(scan_modes)
+        self._fm_sources = (frozenset(fm_sources) if fm_sources is not None else None)
+        self._fm_channels = (frozenset(fm_channels) if fm_channels is not None else None)
         self._power_limits = (min(power_limits), max(power_limits))
         self._frequency_limits = (min(frequency_limits), max(frequency_limits))
+        self._fm_limits = (min(fm_limits), max(fm_limits))
+        self._fm_internal_frequency = (min(fm_interal_frequency), max(fm_interal_frequency))     
 
     @property
     def scan_size_limits(self):
@@ -293,6 +398,38 @@ class MicrowaveConstraints:
     def scan_modes(self):
         return self._scan_modes
 
+    @property
+    def fm_sources(self):
+        return self._fm_sources
+
+    @property
+    def fm_channels(self):
+        return self._fm_channels
+
+    @property
+    def fm_limits(self):
+        return self.fm_limits
+
+    @property
+    def max_fm(self):
+        return self._fm_limits[0]
+
+    @property
+    def min_fm(self):
+        return self._fm_limits[1]
+
+    @property
+    def fm_internal_frequency(self):
+        return self._fm_internal_frequency
+
+    @property
+    def max_fm_internal_frequency(self):
+        return self._fm_internal_frequency[0]
+
+    @property
+    def min_fm_internal_frequency(self):
+        return self._fm_internal_frequency[1]
+
     def frequency_in_range(self, value):
         return in_range(value, *self._frequency_limits)
 
@@ -307,3 +444,15 @@ class MicrowaveConstraints:
 
     def mode_supported(self, mode):
         return mode in self._scan_modes
+
+    def fm_source_supported(self, fm_source):
+        return fm_source in self._fm_sources
+
+    def fm_channel_supported(self, fm_channel):
+        return fm_channel in self._fm_channels
+
+    def fm_in_range(self, value):
+        return in_range(value, *self._fm_limits)
+
+    def fm_internal_frequency_in_range(self,value):
+        return in_range(value, *self._fm_internal_frequency)
